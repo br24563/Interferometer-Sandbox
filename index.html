@@ -3,44 +3,221 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="An interactive, educational Michelson interferometer simulator.">
-  <title>Interferometer Lab</title>
+  <meta name="description" content="A professional-grade, interactive Michelson interferometer simulator with precise optical path control.">
+  <title>Professional Michelson Interferometer Lab</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <main class="page-shell">
     <header class="hero">
-      <div><p class="eyebrow">Physics learning lab</p><h1>Interferometer Sandbox</h1><p class="intro">A simple but rigorous Michelson interferometer model. Change the optical path, then see how phase creates bright and dark fringes.</p></div>
-      <span class="badge">No dependencies</span>
+      <div>
+        <p class="eyebrow">Physics Simulation</p>
+        <h1>Michelson Interferometer Lab</h1>
+        <p class="intro">A rigorous optical path interferometer model. Adjust arm lengths with nm precision and observe real-time interference patterns.</p>
+      </div>
+      <span class="badge">Professional Grade • No dependencies</span>
     </header>
 
     <section class="lab-grid" aria-label="Interactive interferometer lab">
       <aside class="card controls-panel">
-        <h2>Experiment controls</h2>
-        <!-- Each slider maps to one explicit physical quantity used in app.js. -->
-        <div class="control"><div class="control-label"><label for="wavelength">Vacuum wavelength</label><output id="wavelengthOut"></output></div><input id="wavelength" type="range" min="380" max="740" value="532" step="1"></div>
-        <div class="control"><div class="control-label"><label for="armA">Arm A geometric length</label><output id="armAOut"></output></div><input id="armA" type="range" min="490" max="510" value="500" step="0.001"></div>
-        <div class="control"><div class="control-label"><label for="armB">Arm B geometric length</label><output id="armBOut"></output></div><input id="armB" type="range" min="490" max="510" value="501" step="0.001"></div>
-        <div class="control"><div class="control-label"><label for="phaseOffset">Added phase offset</label><output id="phaseOffsetOut"></output></div><input id="phaseOffset" type="range" min="0" max="360" value="0" step="1"></div>
-        <div class="control"><div class="control-label"><label for="coherence">Coherence / contrast</label><output id="coherenceOut"></output></div><input id="coherence" type="range" min="0" max="100" value="100" step="1"></div>
-        <div class="button-row"><button class="button button-primary" id="reset">Reset experiment</button><button class="button" id="quarterWave">Move B by λ/4</button></div>
-        <p class="fine-print">For a Michelson interferometer, light travels to each mirror <em>and back</em>, so the optical path difference is 2(L<sub>B</sub> − L<sub>A</sub>).</p>
+        <h2>Optical Setup</h2>
+        
+        <!-- Wavelength Control -->
+        <div class="control-group">
+          <h3>Light Source</h3>
+          <div class="control">
+            <div class="control-label">
+              <label for="wavelength">Vacuum wavelength</label>
+              <output id="wavelengthOut"></output>
+            </div>
+            <div class="input-row">
+              <input id="wavelength" type="range" min="380" max="740" value="532" step="1" aria-label="Wavelength slider">
+              <input id="wavelengthInput" type="number" min="380" max="740" value="532" step="0.1" class="numeric-input" aria-label="Wavelength numeric input">
+              <span class="unit">nm</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Arm Length Controls -->
+        <div class="control-group">
+          <h3>Interferometer Arms</h3>
+          
+          <div class="control">
+            <div class="control-label">
+              <label for="armA">Arm A length</label>
+              <output id="armAOut"></output>
+            </div>
+            <div class="input-row">
+              <input id="armA" type="range" min="0" max="200" value="100" step="0.01" aria-label="Arm A length slider">
+              <input id="armAInput" type="number" min="0" max="200" value="100" step="0.1" class="numeric-input" aria-label="Arm A length numeric input">
+              <span class="unit">µm</span>
+            </div>
+            <div class="fine-print" style="margin-top: 4px;">Geometric path length</div>
+          </div>
+
+          <div class="control">
+            <div class="control-label">
+              <label for="armB">Arm B length</label>
+              <output id="armBOut"></output>
+            </div>
+            <div class="input-row">
+              <input id="armB" type="range" min="0" max="200" value="100.5" step="0.01" aria-label="Arm B length slider">
+              <input id="armBInput" type="number" min="0" max="200" value="100.5" step="0.1" class="numeric-input" aria-label="Arm B length numeric input">
+              <span class="unit">µm</span>
+            </div>
+            <div class="fine-print" style="margin-top: 4px;">Geometric path length</div>
+          </div>
+
+          <div class="opd-display">
+            <strong>Optical Path Difference (round-trip):</strong>
+            <span id="opdDisplay">1.000 µm</span>
+            <div class="fine-print" style="margin-top: 4px;">Δ = 2|L<sub>B</sub> − L<sub>A</sub>|</div>
+          </div>
+        </div>
+
+        <!-- Phase Offset -->
+        <div class="control-group">
+          <h3>Phase Adjustment</h3>
+          <div class="control">
+            <div class="control-label">
+              <label for="phaseOffset">Electronic phase offset</label>
+              <output id="phaseOffsetOut"></output>
+            </div>
+            <div class="input-row">
+              <input id="phaseOffset" type="range" min="0" max="360" value="0" step="0.1" aria-label="Phase offset slider">
+              <input id="phaseOffsetInput" type="number" min="0" max="360" value="0" step="0.1" class="numeric-input" aria-label="Phase offset numeric input">
+              <span class="unit">°</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Coherence Control -->
+        <div class="control-group">
+          <h3>Source Coherence</h3>
+          <div class="control">
+            <div class="control-label">
+              <label for="coherence">Coherence degree (γ)</label>
+              <output id="coherenceOut"></output>
+            </div>
+            <div class="input-row">
+              <input id="coherence" type="range" min="0" max="100" value="100" step="0.5" aria-label="Coherence slider">
+              <input id="coherenceInput" type="number" min="0" max="100" value="100" step="0.1" class="numeric-input" aria-label="Coherence numeric input">
+              <span class="unit">%</span>
+            </div>
+            <div class="coherence-info">
+              <p class="fine-print">Describes temporal coherence and fringe visibility. At 100%, perfect monochromatic laser. Lower values simulate finite linewidth.</p>
+              <div class="coherence-indicator" id="coherenceIndicator">
+                <div class="coherence-bar"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Control Buttons -->
+        <div class="button-row">
+          <button class="button button-primary" id="reset">Reset to Defaults</button>
+          <button class="button" id="quarterWave">Move B by +λ/4</button>
+        </div>
+
+        <p class="fine-print" style="margin-top: 16px;">
+          The round-trip optical path difference accounts for both forward and return travel: 
+          <strong>Δ = 2(L<sub>B</sub> − L<sub>A</sub>)</strong>
+        </p>
       </aside>
 
       <div class="visual-column">
-        <section class="card diagram-card"><canvas id="diagram" aria-label="Michelson interferometer optical diagram"></canvas></section>
+        <!-- Optical Diagram -->
+        <section class="card diagram-card">
+          <h2>Optical Setup</h2>
+          <canvas id="diagram" aria-label="Michelson interferometer optical diagram with animated arms"></canvas>
+        </section>
+
+        <!-- Results Grid -->
         <div class="results-grid">
-          <section class="card reading-card"><h2>Normalized detector intensity</h2><div class="intensity-reading" id="intensity"></div><p id="interferenceState"></p></section>
-          <section class="card plot-card"><canvas id="plot" aria-label="Detector intensity versus optical path difference"></canvas><div class="legend"><span><i class="legend-dot cyan"></i>intensity</span><span><i class="legend-dot gold"></i>current OPD</span></div></section>
+          <!-- Intensity Reading -->
+          <section class="card reading-card">
+            <h2>Detector Signal</h2>
+            <div class="intensity-reading" id="intensity"></div>
+            <p id="interferenceState"></p>
+            <div class="intensity-details">
+              <span>Min: <strong id="intensityMin">0.00</strong></span>
+              <span>Max: <strong id="intensityMax">1.00</strong></span>
+              <span>Contrast: <strong id="contrast">100%</strong></span>
+            </div>
+          </section>
+
+          <!-- Intensity vs OPD Plot -->
+          <section class="card plot-card">
+            <h2>Intensity vs OPD</h2>
+            <canvas id="plot" aria-label="Detector intensity versus optical path difference"></canvas>
+            <div class="legend">
+              <span><i class="legend-dot cyan"></i> Current intensity</span>
+              <span><i class="legend-dot gold"></i> Wavelength scale</span>
+            </div>
+          </section>
         </div>
       </div>
     </section>
 
+    <!-- Derived Quantities and Model -->
     <section class="derived-section" aria-label="Derived values and model equation">
-      <article class="card derived-card"><h2>Derived quantities</h2><dl class="metrics"><div><dt>Optical path difference</dt><dd id="opd"></dd></div><div><dt>Phase difference</dt><dd id="phaseDifference"></dd></div><div><dt>Fringe order</dt><dd id="fringeOrder"></dd></div></dl></article>
-      <article class="card equation-card"><h2>Model used</h2><p id="equation"></p><p class="fine-print">This normalized equation assumes equal beam intensities. The coherence factor γ represents imperfect contrast from limited coherence, alignment, or unequal polarization.</p></article>
+      <article class="card derived-card">
+        <h2>Derived Quantities</h2>
+        <dl class="metrics">
+          <div>
+            <dt>Phase difference (φ)</dt>
+            <dd id="phaseDiff"></dd>
+          </div>
+          <div>
+            <dt>Normalized intensity</dt>
+            <dd id="intensityFormula"></dd>
+          </div>
+          <div>
+            <dt>Fringe order (m)</dt>
+            <dd id="fringeOrder"></dd>
+          </div>
+          <div>
+            <dt>Visibility (V)</dt>
+            <dd id="visibility"></dd>
+          </div>
+          <div>
+            <dt>Spectrum color</dt>
+            <dd id="spectrumColor" style="display: inline-block; width: 24px; height: 24px; border-radius: 4px; vertical-align: middle; border: 1px solid var(--muted);"></dd>
+          </div>
+        </dl>
+      </article>
+
+      <article class="card equation-card">
+        <h2>Physical Model</h2>
+        <div class="model-description">
+          <p>For equal beam intensities with coherence factor γ:</p>
+          <p class="equation">I/I<sub>max</sub> = <strong>½[1 + γ cos(φ)]</strong></p>
+          <p>Where:</p>
+          <ul>
+            <li><strong>φ = 2π(OPD)/λ + φ₀</strong> — phase difference in radians</li>
+            <li><strong>OPD = 2|L<sub>B</sub> − L<sub>A</sub>|</strong> — round-trip optical path difference</li>
+            <li><strong>γ ∈ [0,1]</strong> — degree of coherence (temporal coherence)</li>
+            <li><strong>I<sub>max</sub></strong> — sum of individual beam intensities (assumed equal)</li>
+          </ul>
+          <p class="fine-print">At γ = 1 (perfect coherence), fringes have maximum visibility. As γ decreases, fringe contrast reduces and eventually disappears. This models a finite spectral linewidth.</p>
+        </div>
+      </article>
+    </section>
+
+    <section class="tips-section">
+      <article class="card">
+        <h2>Measurement Tips</h2>
+        <ul style="margin: 0; padding-left: 20px;">
+          <li>Use <strong>numeric inputs</strong> for precise nm-scale adjustments; use <strong>sliders</strong> for rapid exploration.</li>
+          <li>Adjust coherence to see how fringe contrast degrades with realistic light sources.</li>
+          <li>Move Arm B by λ/4 repeatedly to scan through bright and dark fringes (2π phase shift per fringe).</li>
+          <li>At constructive interference (phase ≈ 0, 2π, …), intensity is maximum; at destructive interference (phase ≈ π, 3π, …), it is zero.</li>
+          <li>The <strong>Visibility</strong> is the ratio of (I<sub>max</sub> − I<sub>min</sub>) / (I<sub>max</sub> + I<sub>min</sub>), capped by coherence.</li>
+        </ul>
+      </article>
     </section>
   </main>
+
   <script src="app.js"></script>
 </body>
 </html>
