@@ -13,7 +13,7 @@
       <div>
         <p class="eyebrow">Physics Simulation</p>
         <h1>Michelson Interferometer Lab</h1>
-        <p class="intro">A rigorous optical path interferometer model. Adjust arm lengths with 0.1 nm precision and observe real-time interference patterns.</p>
+        <p class="intro">A rigorous optical path interferometer model. Adjust arm lengths with picometer (0.001 nm) precision and observe real-time interference patterns.</p>
       </div>
       <span class="badge">Professional Grade • No dependencies</span>
     </header>
@@ -49,10 +49,10 @@
             </div>
             <div class="input-row">
               <input id="armA" type="range" min="0" max="200000" value="100000" step="1" aria-label="Arm A length slider">
-              <input id="armAInput" type="number" min="0" max="200000" value="100000" step="0.1" class="numeric-input" aria-label="Arm A length numeric input">
+              <input id="armAInput" type="number" min="0" max="200000" value="100000" step="1" class="numeric-input" aria-label="Arm A length numeric input">
               <span class="unit">pm</span>
             </div>
-            <div class="fine-print" style="margin-top: 4px;">Geometric path length (1 pm = 0.001 nm)</div>
+            <div class="fine-print" style="margin-top: 4px;">Geometric path length (1 pm = 10⁻¹² m, enter down to 1 pm precision)</div>
           </div>
 
           <div class="control">
@@ -62,10 +62,10 @@
             </div>
             <div class="input-row">
               <input id="armB" type="range" min="0" max="200000" value="100500" step="1" aria-label="Arm B length slider">
-              <input id="armBInput" type="number" min="0" max="200000" value="100500" step="0.1" class="numeric-input" aria-label="Arm B length numeric input">
+              <input id="armBInput" type="number" min="0" max="200000" value="100500" step="1" class="numeric-input" aria-label="Arm B length numeric input">
               <span class="unit">pm</span>
             </div>
-            <div class="fine-print" style="margin-top: 4px;">Geometric path length (1 pm = 0.001 nm)</div>
+            <div class="fine-print" style="margin-top: 4px;">Geometric path length (1 pm = 10⁻¹² m, enter down to 1 pm precision)</div>
           </div>
 
           <div class="opd-display">
@@ -199,7 +199,7 @@
             <li><strong>γ ∈ [0,1]</strong> — degree of coherence (temporal coherence)</li>
             <li><strong>I<sub>max</sub></strong> — sum of individual beam intensities (assumed equal)</li>
           </ul>
-          <p class="fine-print">At γ = 1 (perfect coherence), fringes have maximum visibility. As γ decreases, fringe contrast reduces and eventually disappears. This models a finite spectral l[...]</p>
+          <p class="fine-print">At γ = 1 (perfect coherence), fringes have maximum visibility. As γ decreases, fringe contrast reduces and eventually disappears. This models a finite spectral l[...]
         </div>
       </article>
     </section>
@@ -208,7 +208,8 @@
       <article class="card">
         <h2>Measurement Tips</h2>
         <ul style="margin: 0; padding-left: 20px;">
-          <li>Use <strong>numeric inputs</strong> for precise 0.1 nm-scale adjustments; use <strong>sliders</strong> for rapid exploration.</li>
+          <li>Use <strong>numeric inputs</strong> for precise picometer-scale adjustments; use <strong>sliders</strong> for rapid exploration.</li>
+          <li>Enter arm lengths directly in picometers (pm) for full sub-nanometer control down to 1 pm precision.</li>
           <li>Adjust coherence to see how fringe contrast degrades with realistic light sources.</li>
           <li>Move Arm B by λ/4 repeatedly to scan through bright and dark fringes (2π phase shift per fringe).</li>
           <li>At constructive interference (phase ≈ 0, 2π, …), intensity is maximum; at destructive interference (phase ≈ π, 3π, …), it is zero.</li>
