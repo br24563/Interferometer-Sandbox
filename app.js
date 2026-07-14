@@ -20,8 +20,8 @@ const controls = {
 
 const defaults = {
   wavelength: 532,
-  armA: 100000,
-  armB: 100500,
+  armA: 100,
+  armB: 100.5,
   phaseOffset: 0,
   coherence: 100
 };
@@ -69,8 +69,8 @@ Object.entries({
 function readInputs() {
   return {
     wavelength: Number(controls.wavelength.value),
-    armA: Number(controls.armA.value) / 1000, // Convert pm to nm
-    armB: Number(controls.armB.value) / 1000, // Convert pm to nm
+    armA: Number(controls.armA.value), // Arm inputs are nanometres.
+    armB: Number(controls.armB.value),
     phaseOffset: Number(controls.phaseOffset.value),
     coherence: Number(controls.coherence.value)
   };
@@ -132,7 +132,7 @@ function physics(input) {
   const lambda = wavelengthMicrometres(input.wavelength);
   
   // Round-trip optical path difference (both forward and return travel)
-  const opd = 2 * Math.abs(input.armB - input.armA);
+  const opd = 2 * (input.armB - input.armA);
   
   // Phase from OPD plus user-added offset
   const offset = input.phaseOffset * Math.PI / 180;
@@ -422,8 +422,8 @@ function render() {
   
   // Update slider outputs
   $("wavelengthOut").textContent = `${input.wavelength} nm`;
-  $("armAOut").textContent = `${Math.round(Number(controls.armA.value))} pm`;
-  $("armBOut").textContent = `${Math.round(Number(controls.armB.value))} pm`;
+  $("armAOut").textContent = `${Number(controls.armA.value).toFixed(3)} nm`;
+  $("armBOut").textContent = `${Number(controls.armB.value).toFixed(3)} nm`;
   $("phaseOffsetOut").textContent = `${input.phaseOffset.toFixed(1)}°`;
   $("coherenceOut").textContent = `${input.coherence.toFixed(1)}%`;
   
