@@ -219,6 +219,9 @@ body {
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
+/* The experiment selector needs room for full instrument names. */
+#instrumentMode { width: 100%; min-height: 48px; font-size: 1rem; font-weight: 650; }
+
 .numeric-input:focus {
   outline: none;
   border-color: var(--cyan);

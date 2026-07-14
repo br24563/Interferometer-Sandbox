@@ -49,6 +49,8 @@
         <!-- Arm Length Controls -->
         <div class="control-group">
           <h3>Interferometer Arms</h3>
+          <div class="control-label"><label for="lengthUnit">Arm input units</label></div>
+          <select id="lengthUnit" class="numeric-input" aria-label="Arm-length units"><option value="nm">nanometres (nm)</option><option value="um">micrometres (µm)</option><option value="mm">millimetres (mm)</option></select>
           
           <div class="control">
             <div class="control-label">
@@ -56,7 +58,7 @@
               <output id="armAOut"></output>
             </div>
             <div class="input-row">
-              <input id="armA" type="range" min="0" max="200" value="100" step="0.001" aria-label="Arm A length slider">
+              <input id="armA" type="range" min="0" max="5000" value="1000" step="0.001" aria-label="Arm A length slider">
               <input id="armAInput" type="number" min="0" max="200" value="100" step="0.001" class="numeric-input" aria-label="Arm A length numeric input">
               <span class="unit">nm</span>
             </div>
@@ -69,7 +71,7 @@
               <output id="armBOut"></output>
             </div>
             <div class="input-row">
-              <input id="armB" type="range" min="0" max="200" value="100.5" step="0.001" aria-label="Arm B length slider">
+              <input id="armB" type="range" min="0" max="5000" value="1000.5" step="0.001" aria-label="Arm B length slider">
               <input id="armBInput" type="number" min="0" max="200" value="100.5" step="0.001" class="numeric-input" aria-label="Arm B length numeric input">
               <span class="unit">nm</span>
             </div>

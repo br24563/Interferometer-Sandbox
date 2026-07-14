@@ -28,6 +28,20 @@ const defaults = {
 
 const TAU = 2 * Math.PI;
 const instrumentMode = $("instrumentMode");
+const lengthUnit = $("lengthUnit");
+const unitScale = { nm: 1, um: 1000, mm: 1000000 };
+let activeLengthUnit = "nm";
+lengthUnit.addEventListener("change", () => {
+  const oldScale = unitScale[activeLengthUnit], scale = unitScale[lengthUnit.value];
+  [controls.armA, controls.armB].forEach((slider) => {
+    slider.value = Number(slider.value) * oldScale / scale;
+    slider.max = 5000 / scale; slider.step = 0.001 / scale;
+    $(slider.id + "Input").value = slider.value;
+    $(slider.id + "Input").max = slider.max; $(slider.id + "Input").step = slider.step;
+  });
+  activeLengthUnit = lengthUnit.value;
+  render();
+});
 const MIN_WAVELENGTH = 380;
 const MAX_WAVELENGTH = 740;
 
@@ -71,8 +85,8 @@ Object.entries({
 function readInputs() {
   return {
     wavelength: Number(controls.wavelength.value),
-    armA: Number(controls.armA.value), // Arm inputs are nanometres.
-    armB: Number(controls.armB.value),
+    armA: Number(controls.armA.value) * unitScale[lengthUnit.value],
+    armB: Number(controls.armB.value) * unitScale[lengthUnit.value],
     phaseOffset: Number(controls.phaseOffset.value),
     coherence: Number(controls.coherence.value)
   };
@@ -230,7 +244,7 @@ function drawDiagram(input, model, colour) {
   
   // ---- Arm A (vertical) ----
   const armALength = input.armA;
-  const maxArmLength = 200;
+  const maxArmLength = 5000;
   const armAVisualLength = Math.max(42, (armALength / maxArmLength) * (beamY - mirrorAY - 20));
   
   ctx.strokeStyle = colour;
@@ -453,8 +467,9 @@ function render() {
   
   // Update slider outputs
   $("wavelengthOut").textContent = `${input.wavelength} nm`;
-  $("armAOut").textContent = `${Number(controls.armA.value).toFixed(3)} nm`;
-  $("armBOut").textContent = `${Number(controls.armB.value).toFixed(3)} nm`;
+  const scale = unitScale[lengthUnit.value];
+  $("armAOut").textContent = `${Number(controls.armA.value).toFixed(3)} ${lengthUnit.value}`;
+  $("armBOut").textContent = `${Number(controls.armB.value).toFixed(3)} ${lengthUnit.value}`;
   $("phaseOffsetOut").textContent = `${input.phaseOffset.toFixed(1)}°`;
   $("coherenceOut").textContent = `${input.coherence.toFixed(1)}%`;
   
