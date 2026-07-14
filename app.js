@@ -292,6 +292,7 @@ function drawDiagram(input, model, colour) {
 
 // ==================== Plot Rendering ====================
 // Draw intensity vs. optical path difference with smooth sinusoidal curve
+// Blue dot now correctly tracks on the intensity curve
 
 function drawPlot(input, model, colour) {
   const [ctx, w, h] = canvasContext($("plot"));
@@ -342,17 +343,19 @@ function drawPlot(input, model, colour) {
   for (let i = 0; i <= resolution; i++) {
     const t = i / resolution;
     
-    // Shift the curve based on current OPD
-    const currentPhase = model.phase;
-    const currentOPD = model.opd;
+    // Map t (0 to 1) to OPD space: centered around current OPD
+    // t=0 corresponds to OPD = currentOPD - 4λ
+    // t=1 corresponds to OPD = currentOPD + 4λ
+    const opdValue = model.opd + (-4 * model.lambda + t * 8 * model.lambda);
     
-    // Map t to OPD space, centered around current OPD
-    const opdOffset = -span / 2 + t * span;
-    const phaseOffset = TAU * (opdOffset / model.lambda) + currentPhase - TAU * (currentOPD / model.lambda);
+    // Calculate phase for this OPD value
+    const phase = TAU * (opdValue / model.lambda) + (model.phaseOffset * Math.PI / 180);
     
+    // Intensity at this phase
     const gamma = input.coherence / 100;
-    const intensity = 0.5 * (1 + gamma * Math.cos(phaseOffset));
+    const intensity = 0.5 * (1 + gamma * Math.cos(phase));
     
+    // Plot coordinates
     const x = box.left + t * pw;
     const y = box.top + ph * (1 - intensity);
     
@@ -362,6 +365,7 @@ function drawPlot(input, model, colour) {
   ctx.stroke();
   
   // Mark current position on the curve
+  // Current position is always at the center (t=0.5) since curve is centered on current OPD
   const centerT = 0.5;
   const centerX = box.left + centerT * pw;
   const centerY = box.top + ph * (1 - model.intensity);
