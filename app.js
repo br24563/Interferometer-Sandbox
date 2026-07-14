@@ -1,9 +1,9 @@
 "use strict";
 
 // Professional Michelson Interferometer Lab
-// All distance values in micrometres (µm); wavelengths in nanometres (nm).
-// Using µm gives visible wavelengths (380–740 nm ≈ 0.38–0.74 µm) and allows
-// sub-micron arm-length adjustments with reasonable slider ranges.
+// All distance values in picometres (pm); wavelengths in nanometres (nm).
+// Using pm for arm lengths gives sub-nanometer precision and allows
+// 0.1 nm (100 pm) arm-length adjustments with reasonable slider ranges.
 
 const $ = (id) => document.getElementById(id);
 const controls = {
@@ -21,8 +21,8 @@ const controls = {
 
 const defaults = {
   wavelength: 532,
-  armA: 100,
-  armB: 100.5,
+  armA: 100000,
+  armB: 100500,
   phaseOffset: 0,
   coherence: 100
 };
@@ -36,11 +36,11 @@ const MAX_WAVELENGTH = 740;
 
 function syncFromSlider(sliderId, inputId) {
   const value = Number($(sliderId).value);
-  $(inputId).value = value;
+  $(inputId).value = (value / 1000).toFixed(1); // Convert pm to nm display
 }
 
 function syncFromInput(inputId, sliderId) {
-  let value = Number($(inputId).value);
+  let value = Number($(inputId).value) * 1000; // Convert nm to pm
   const slider = $(sliderId);
   
   // Clamp to slider range
@@ -49,7 +49,7 @@ function syncFromInput(inputId, sliderId) {
   value = Math.max(min, Math.min(max, value));
   
   $(sliderId).value = value;
-  $(inputId).value = value;
+  $(inputId).value = (value / 1000).toFixed(1);
 }
 
 // Set up two-way sync for each control pair
@@ -70,8 +70,8 @@ Object.entries({
 function readInputs() {
   return {
     wavelength: Number(controls.wavelength.value),
-    armA: Number(controls.armA.value),
-    armB: Number(controls.armB.value),
+    armA: Number(controls.armA.value) / 1000, // Convert pm to nm
+    armB: Number(controls.armB.value) / 1000, // Convert pm to nm
     phaseOffset: Number(controls.phaseOffset.value),
     coherence: Number(controls.coherence.value)
   };
@@ -242,7 +242,7 @@ function drawDiagram(input, model, colour) {
   ctx.font = "10px sans-serif";
   ctx.textAlign = "center";
   ctx.fillText(`M_A`, splitX, beamY - armAVisualLength - 10);
-  ctx.fillText(`${armALength.toFixed(2)} µm`, splitX, beamY - armAVisualLength + 15);
+  ctx.fillText(`${armALength.toFixed(2)} nm`, splitX, beamY - armAVisualLength + 15);
   
   // ---- Arm B (horizontal) ----
   const armBLength = input.armB;
@@ -259,7 +259,7 @@ function drawDiagram(input, model, colour) {
   ctx.fillStyle = "#a1b8d0";
   ctx.textAlign = "center";
   ctx.fillText(`M_B`, splitX + armBVisualLength + 12, beamY - 8);
-  ctx.fillText(`${armBLength.toFixed(2)} µm`, splitX + armBVisualLength, beamY + 18);
+  ctx.fillText(`${armBLength.toFixed(2)} nm`, splitX + armBVisualLength, beamY + 18);
   
   // ---- Recombined Beam ----
   const recombineX = splitX + armBVisualLength * 0.5;
@@ -285,13 +285,13 @@ function drawDiagram(input, model, colour) {
   ctx.fillStyle = "#58e6ff";
   ctx.font = "bold 12px monospace";
   ctx.textAlign = "left";
-  ctx.fillText(`OPD: ${model.opd.toFixed(3)} µm`, 12, 24);
+  ctx.fillText(`OPD: ${model.opd.toFixed(3)} nm`, 12, 24);
   ctx.fillText(`Phase: ${formatPhase(model.phase)}`, 12, 40);
   ctx.fillText(`λ: ${input.wavelength} nm`, 12, 56);
 }
 
 // ==================== Plot Rendering ====================
-// Draw intensity vs. optical path difference
+// Draw intensity vs. optical path difference with smooth sinusoidal curve
 
 function drawPlot(input, model, colour) {
   const [ctx, w, h] = canvasContext($("plot"));
@@ -332,14 +332,24 @@ function drawPlot(input, model, colour) {
     }
   }
   
-  // Draw intensity curve
+  // Draw intensity curve with smooth bezier-like interpolation
   ctx.strokeStyle = colour;
   ctx.lineWidth = 2;
   ctx.beginPath();
-  for (let i = 0; i <= 100; i++) {
-    const t = i / 100;
+  
+  // Increase resolution for smoother curve
+  const resolution = 200;
+  for (let i = 0; i <= resolution; i++) {
+    const t = i / resolution;
+    
+    // Shift the curve based on current OPD
+    const currentPhase = model.phase;
+    const currentOPD = model.opd;
+    
+    // Map t to OPD space, centered around current OPD
     const opdOffset = -span / 2 + t * span;
-    const phaseOffset = TAU * (opdOffset / model.lambda);
+    const phaseOffset = TAU * (opdOffset / model.lambda) + currentPhase - TAU * (currentOPD / model.lambda);
+    
     const gamma = input.coherence / 100;
     const intensity = 0.5 * (1 + gamma * Math.cos(phaseOffset));
     
@@ -351,21 +361,22 @@ function drawPlot(input, model, colour) {
   }
   ctx.stroke();
   
-  // Mark current position
-  const currentX = box.left + pw * 0.5;
-  const currentY = box.top + ph * (1 - model.intensity);
+  // Mark current position on the curve
+  const centerT = 0.5;
+  const centerX = box.left + centerT * pw;
+  const centerY = box.top + ph * (1 - model.intensity);
   
   ctx.fillStyle = "#58e6ff";
   ctx.beginPath();
-  ctx.arc(currentX, currentY, 4, 0, TAU);
+  ctx.arc(centerX, centerY, 5, 0, TAU);
   ctx.fill();
   
   ctx.strokeStyle = "#58e6ff";
   ctx.lineWidth = 0.5;
   ctx.setLineDash([2, 2]);
   ctx.beginPath();
-  ctx.moveTo(currentX, currentY);
-  ctx.lineTo(currentX, box.top + ph);
+  ctx.moveTo(centerX, centerY);
+  ctx.lineTo(centerX, box.top + ph);
   ctx.stroke();
   ctx.setLineDash([]);
   
@@ -373,7 +384,7 @@ function drawPlot(input, model, colour) {
   ctx.fillStyle = "#a1b8d0";
   ctx.font = "11px monospace";
   ctx.textAlign = "center";
-  ctx.fillText("OPD (µm)", w / 2, h - 4);
+  ctx.fillText("OPD (nm)", w / 2, h - 4);
   ctx.save();
   ctx.translate(12, h / 2);
   ctx.rotate(-Math.PI / 2);
@@ -408,13 +419,13 @@ function render() {
   
   // Update slider outputs
   $("wavelengthOut").textContent = `${input.wavelength} nm`;
-  $("armAOut").textContent = `${input.armA.toFixed(2)} µm`;
-  $("armBOut").textContent = `${input.armB.toFixed(2)} µm`;
+  $("armAOut").textContent = `${input.armA.toFixed(1)} nm`;
+  $("armBOut").textContent = `${input.armB.toFixed(1)} nm`;
   $("phaseOffsetOut").textContent = `${input.phaseOffset.toFixed(1)}°`;
   $("coherenceOut").textContent = `${input.coherence.toFixed(1)}%`;
   
   // Update derived quantities
-  $("opdDisplay").textContent = `${model.opd.toFixed(3)} µm`;
+  $("opdDisplay").textContent = `${model.opd.toFixed(3)} nm`;
   $("phaseDiff").textContent = formatPhase(model.phase);
   $("fringeOrder").innerHTML = `${model.fringeOrder.toFixed(2)} (${(model.fringeOrder % 1).toFixed(3)} fringes)`;
   $("visibility").textContent = `${(model.visibility * 100).toFixed(1)}%`;
@@ -461,7 +472,7 @@ $("reset").addEventListener("click", () => {
     const inputId = key.endsWith("Input") ? key : key + "Input";
     
     if ($(sliderId)) $(sliderId).value = value;
-    if ($(inputId)) $(inputId).value = value;
+    if ($(inputId)) $(inputId).value = value / 1000; // Show in nm
   });
   render();
 });
@@ -469,17 +480,17 @@ $("reset").addEventListener("click", () => {
 $("quarterWave").addEventListener("click", () => {
   const wavelength = Number(controls.wavelength.value);
   const lambda = wavelengthMicrometres(wavelength);
-  const quarterWaveLength = lambda / 4;
+  const quarterWaveLength = lambda / 4 * 1000; // Convert to pm
   
   const currentArmB = Number(controls.armB.value);
   const newArmB = currentArmB + quarterWaveLength;
   
   const max = Number(controls.armB.max);
   if (newArmB <= max) {
-    controls.armB.value = newArmB.toFixed(2);
-    controls.armBInput.value = newArmB.toFixed(2);
+    controls.armB.value = newArmB;
+    controls.armBInput.value = (newArmB / 1000).toFixed(1);
   } else {
-    alert(`Cannot move Arm B by λ/4 (${quarterWaveLength.toFixed(4)} µm): would exceed maximum length.`);
+    alert(`Cannot move Arm B by λ/4 (${(quarterWaveLength / 1000).toFixed(4)} nm): would exceed maximum length.`);
   }
   
   render();
