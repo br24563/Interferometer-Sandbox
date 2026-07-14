@@ -245,7 +245,10 @@ function drawDiagram(input, model, colour) {
   // ---- Arm A (vertical) ----
   const armALength = input.armA;
   const maxArmLength = 5000;
-  const armAVisualLength = Math.max(42, (armALength / maxArmLength) * (beamY - mirrorAY - 20));
+  // Both arms use the same pixel-per-nanometre scale. The available canvas
+  // travel is shared, so equal physical changes look equal in either arm.
+  const sharedTravel = Math.min(beamY - mirrorAY - 20, mirrorX - splitX - 20);
+  const armAVisualLength = Math.max(42, (armALength / maxArmLength) * sharedTravel);
   
   ctx.strokeStyle = colour;
   ctx.lineWidth = 1.5;
@@ -266,7 +269,7 @@ function drawDiagram(input, model, colour) {
   
   // ---- Arm B (horizontal) ----
   const armBLength = input.armB;
-  const armBVisualLength = Math.max(42, (armBLength / maxArmLength) * (mirrorX - splitX - 20));
+  const armBVisualLength = Math.max(42, (armBLength / maxArmLength) * sharedTravel);
   
   ctx.beginPath();
   ctx.moveTo(splitX, beamY);
