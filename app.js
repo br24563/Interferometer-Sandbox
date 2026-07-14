@@ -2,8 +2,7 @@
 
 // Professional Michelson Interferometer Lab
 // All distance values in picometres (pm); wavelengths in nanometres (nm).
-// Using pm for arm lengths gives sub-nanometer precision and allows
-// 0.1 nm (100 pm) arm-length adjustments with reasonable slider ranges.
+// Using pm for arm lengths gives picometer precision (1 pm = 10^-12 m).
 
 const $ = (id) => document.getElementById(id);
 const controls = {
@@ -36,11 +35,11 @@ const MAX_WAVELENGTH = 740;
 
 function syncFromSlider(sliderId, inputId) {
   const value = Number($(sliderId).value);
-  $(inputId).value = (value / 1000).toFixed(1); // Convert pm to nm display
+  $(inputId).value = value; // Display directly in pm (integer)
 }
 
 function syncFromInput(inputId, sliderId) {
-  let value = Number($(inputId).value) * 1000; // Convert nm to pm
+  let value = Number($(inputId).value); // Already in pm
   const slider = $(sliderId);
   
   // Clamp to slider range
@@ -49,7 +48,7 @@ function syncFromInput(inputId, sliderId) {
   value = Math.max(min, Math.min(max, value));
   
   $(sliderId).value = value;
-  $(inputId).value = (value / 1000).toFixed(1);
+  $(inputId).value = value; // Display as integer pm
 }
 
 // Set up two-way sync for each control pair
@@ -242,7 +241,7 @@ function drawDiagram(input, model, colour) {
   ctx.font = "10px sans-serif";
   ctx.textAlign = "center";
   ctx.fillText(`M_A`, splitX, beamY - armAVisualLength - 10);
-  ctx.fillText(`${armALength.toFixed(2)} nm`, splitX, beamY - armAVisualLength + 15);
+  ctx.fillText(`${(armALength * 1000).toFixed(0)} pm`, splitX, beamY - armAVisualLength + 15);
   
   // ---- Arm B (horizontal) ----
   const armBLength = input.armB;
@@ -259,7 +258,7 @@ function drawDiagram(input, model, colour) {
   ctx.fillStyle = "#a1b8d0";
   ctx.textAlign = "center";
   ctx.fillText(`M_B`, splitX + armBVisualLength + 12, beamY - 8);
-  ctx.fillText(`${armBLength.toFixed(2)} nm`, splitX + armBVisualLength, beamY + 18);
+  ctx.fillText(`${(armBLength * 1000).toFixed(0)} pm`, splitX + armBVisualLength, beamY + 18);
   
   // ---- Recombined Beam ----
   const recombineX = splitX + armBVisualLength * 0.5;
@@ -423,8 +422,8 @@ function render() {
   
   // Update slider outputs
   $("wavelengthOut").textContent = `${input.wavelength} nm`;
-  $("armAOut").textContent = `${input.armA.toFixed(1)} nm`;
-  $("armBOut").textContent = `${input.armB.toFixed(1)} nm`;
+  $("armAOut").textContent = `${Math.round(Number(controls.armA.value))} pm`;
+  $("armBOut").textContent = `${Math.round(Number(controls.armB.value))} pm`;
   $("phaseOffsetOut").textContent = `${input.phaseOffset.toFixed(1)}°`;
   $("coherenceOut").textContent = `${input.coherence.toFixed(1)}%`;
   
@@ -476,7 +475,7 @@ $("reset").addEventListener("click", () => {
     const inputId = key.endsWith("Input") ? key : key + "Input";
     
     if ($(sliderId)) $(sliderId).value = value;
-    if ($(inputId)) $(inputId).value = value / 1000; // Show in nm
+    if ($(inputId)) $(inputId).value = value; // Show in pm (integer)
   });
   render();
 });
@@ -492,9 +491,9 @@ $("quarterWave").addEventListener("click", () => {
   const max = Number(controls.armB.max);
   if (newArmB <= max) {
     controls.armB.value = newArmB;
-    controls.armBInput.value = (newArmB / 1000).toFixed(1);
+    controls.armBInput.value = Math.round(newArmB);
   } else {
-    alert(`Cannot move Arm B by λ/4 (${(quarterWaveLength / 1000).toFixed(4)} nm): would exceed maximum length.`);
+    alert(`Cannot move Arm B by λ/4 (${(quarterWaveLength).toFixed(2)} pm): would exceed maximum length.`);
   }
   
   render();
