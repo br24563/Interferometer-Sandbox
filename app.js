@@ -224,7 +224,7 @@ function drawDiagram(input, model, colour) {
   // ---- Arm A (vertical) ----
   const armALength = input.armA;
   const maxArmLength = 200;
-  const armAVisualLength = (armALength / maxArmLength) * (mirrorAY - beamY - 20);
+  const armAVisualLength = Math.max(42, (armALength / maxArmLength) * (beamY - mirrorAY - 20));
   
   ctx.strokeStyle = colour;
   ctx.lineWidth = 1.5;
@@ -241,11 +241,11 @@ function drawDiagram(input, model, colour) {
   ctx.font = "10px sans-serif";
   ctx.textAlign = "center";
   ctx.fillText(`M_A`, splitX, beamY - armAVisualLength - 10);
-  ctx.fillText(`${(armALength * 1000).toFixed(0)} pm`, splitX, beamY - armAVisualLength + 15);
+  ctx.fillText(`${armALength.toFixed(3)} nm`, splitX, beamY - armAVisualLength + 15);
   
   // ---- Arm B (horizontal) ----
   const armBLength = input.armB;
-  const armBVisualLength = (armBLength / maxArmLength) * (mirrorX - splitX - 20);
+  const armBVisualLength = Math.max(42, (armBLength / maxArmLength) * (mirrorX - splitX - 20));
   
   ctx.beginPath();
   ctx.moveTo(splitX, beamY);
@@ -258,7 +258,7 @@ function drawDiagram(input, model, colour) {
   ctx.fillStyle = "#a1b8d0";
   ctx.textAlign = "center";
   ctx.fillText(`M_B`, splitX + armBVisualLength + 12, beamY - 8);
-  ctx.fillText(`${(armBLength * 1000).toFixed(0)} pm`, splitX + armBVisualLength, beamY + 18);
+  ctx.fillText(`${armBLength.toFixed(3)} nm`, splitX + armBVisualLength, beamY + 18);
   
   // ---- Recombined Beam ----
   const recombineX = splitX + armBVisualLength * 0.5;
@@ -348,7 +348,9 @@ function drawPlot(input, model, colour) {
     const opdValue = model.opd + (-4 * model.lambda + t * 8 * model.lambda);
     
     // Calculate phase for this OPD value
-    const phase = TAU * (opdValue / model.lambda) + (model.phaseOffset * Math.PI / 180);
+    // Use the same user-set phase offset as the detector calculation.
+    // model.phaseOffset is undefined, which previously made this curve NaN.
+    const phase = TAU * (opdValue / model.lambda) + (input.phaseOffset * Math.PI / 180);
     
     // Intensity at this phase
     const gamma = input.coherence / 100;
@@ -392,7 +394,7 @@ function drawPlot(input, model, colour) {
   ctx.translate(12, h / 2);
   ctx.rotate(-Math.PI / 2);
   ctx.textAlign = "center";
-  ctx.fillText("Intensity", 0, 0);
+  ctx.fillText("I / I₀", 0, 0);
   ctx.restore();
   
   // OPD range labels
