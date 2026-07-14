@@ -134,7 +134,8 @@ function physics(input) {
   const lambda = wavelengthMicrometres(input.wavelength);
   
   // Round-trip optical path difference (both forward and return travel)
-  const opd = 2 * (input.armB - input.armA);
+  // Michelson beams make return trips; Mach–Zehnder arms are single-pass.
+  const opd = (instrumentMode.value === "machZehnder") ? (input.armB - input.armA) : 2 * (input.armB - input.armA);
   
   // Phase from OPD plus user-added offset
   const offset = input.phaseOffset * Math.PI / 180;
@@ -177,6 +178,10 @@ function formatPhase(radians) {
 // Draw the Michelson interferometer optical layout with animated arms
 
 function drawDiagram(input, model, colour) {
+  if (instrumentMode.value === "machZehnder") {
+    drawMachZehnderDiagram(input, model, colour);
+    return;
+  }
   const [ctx, w, h] = canvasContext($("diagram"));
   
   const splitX = w * 0.48;
@@ -289,6 +294,23 @@ function drawDiagram(input, model, colour) {
   ctx.fillText(`OPD: ${model.opd.toFixed(3)} nm`, 12, 24);
   ctx.fillText(`Phase: ${formatPhase(model.phase)}`, 12, 40);
   ctx.fillText(`λ: ${input.wavelength} nm`, 12, 56);
+}
+
+// Mach–Zehnder: first beam splitter separates two single-pass paths; the
+// second recombines them at the detector. This is intentionally distinct from
+// the Michelson mirror-return drawing above.
+function drawMachZehnderDiagram(input, model, colour) {
+  const [ctx, w, h] = canvasContext($("diagram"));
+  const x1=w*.30, x2=w*.70, y=h*.52, upper=h*.27, lower=h*.77;
+  ctx.fillStyle="#07111f"; ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle=colour; ctx.lineWidth=2; ctx.lineCap="round";
+  ctx.beginPath(); ctx.moveTo(w*.08,y); ctx.lineTo(x1,y); ctx.lineTo(x2,upper); ctx.lineTo(w*.86,upper); ctx.moveTo(x1,y); ctx.lineTo(x2,lower); ctx.lineTo(w*.86,lower); ctx.stroke();
+  // Recombination paths from the second beam splitter to two output ports.
+  ctx.strokeStyle="#58e6ff"; ctx.beginPath(); ctx.moveTo(x2,upper); ctx.lineTo(x2,lower); ctx.stroke();
+  [[x1,y,"BS1"],[x2,upper,"BS2"]].forEach(([x,yy,label])=>{ctx.strokeStyle="#d7eaff";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(x-11,yy-11);ctx.lineTo(x+11,yy+11);ctx.stroke();ctx.fillStyle="#a1b8d0";ctx.font="11px monospace";ctx.fillText(label,x+17,yy-12);});
+  ctx.fillStyle=colour;ctx.beginPath();ctx.arc(w*.08,y,8,0,TAU);ctx.fill();ctx.fillStyle="#a1b8d0";ctx.font="11px sans-serif";ctx.fillText("Laser",w*.05,y+22);ctx.fillText(`Path A: ${input.armA.toFixed(3)} nm`,w*.40,upper-16);ctx.fillText(`Path B: ${input.armB.toFixed(3)} nm`,w*.40,lower+22);
+  ctx.fillStyle="#ffd166";ctx.fillRect(w*.86-4,upper-13,8,26);ctx.fillRect(w*.86-4,lower-13,8,26);ctx.fillStyle="#a1b8d0";ctx.fillText("D1",w*.88,upper-18);ctx.fillText("D2",w*.88,lower-18);
+  ctx.fillStyle="#58e6ff";ctx.font="bold 12px monospace";ctx.fillText(`OPD: ${model.opd.toFixed(3)} nm`,12,24);ctx.fillText(`λ: ${input.wavelength} nm`,12,42);
 }
 
 // ==================== Plot Rendering ====================
@@ -423,11 +445,11 @@ function render() {
   const input = readInputs();
   const model = physics(input);
   const colour = spectrumColour(input.wavelength);
-  const isTwymanGreen = instrumentMode.value === "twymanGreen";
-  document.querySelector("h1").textContent = isTwymanGreen ? "Twyman–Green Interferometer Lab" : "Michelson Interferometer Lab";
-  document.querySelector('label[for="armA"]').textContent = isTwymanGreen ? "Reference-arm length" : "Arm A length";
-  document.querySelector('label[for="armB"]').textContent = isTwymanGreen ? "Test-arm length" : "Arm B length";
-  $("modeDescription").textContent = isTwymanGreen ? "Collimated source; the test arm represents the wavefront under test. OPD is still the round-trip 2(Ltest − Lref)." : "Two-arm interferometer with a reference and measurement path.";
+  const isMachZehnder = instrumentMode.value === "machZehnder";
+  document.querySelector("h1").textContent = "Interferometer Lab";
+  document.querySelector('label[for="armA"]').textContent = isMachZehnder ? "Path A length" : "Arm A length";
+  document.querySelector('label[for="armB"]').textContent = isMachZehnder ? "Path B length" : "Arm B length";
+  $("modeDescription").textContent = isMachZehnder ? "Mach–Zehnder mode: light traverses each path once, so OPD = LB − LA." : "Michelson mode: light returns from each mirror, so OPD = 2(LB − LA).";
   
   // Update slider outputs
   $("wavelengthOut").textContent = `${input.wavelength} nm`;
