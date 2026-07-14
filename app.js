@@ -27,6 +27,7 @@ const defaults = {
 };
 
 const TAU = 2 * Math.PI;
+const instrumentMode = $("instrumentMode");
 const MIN_WAVELENGTH = 380;
 const MAX_WAVELENGTH = 740;
 
@@ -60,7 +61,8 @@ Object.entries({
   coherence: "coherenceInput"
 }).forEach(([slider, input]) => {
   $(slider).addEventListener("input", () => syncFromSlider(slider, input));
-  $(input).addEventListener("change", () => syncFromInput(input, slider));
+  $(input).addEventListener("input", () => { syncFromInput(input, slider); render(); });
+  $(input).addEventListener("change", () => { syncFromInput(input, slider); render(); });
   $(input).addEventListener("blur", () => syncFromInput(input, slider));
 });
 
@@ -421,6 +423,11 @@ function render() {
   const input = readInputs();
   const model = physics(input);
   const colour = spectrumColour(input.wavelength);
+  const isTwymanGreen = instrumentMode.value === "twymanGreen";
+  document.querySelector("h1").textContent = isTwymanGreen ? "Twyman–Green Interferometer Lab" : "Michelson Interferometer Lab";
+  document.querySelector('label[for="armA"]').textContent = isTwymanGreen ? "Reference-arm length" : "Arm A length";
+  document.querySelector('label[for="armB"]').textContent = isTwymanGreen ? "Test-arm length" : "Arm B length";
+  $("modeDescription").textContent = isTwymanGreen ? "Collimated source; the test arm represents the wavefront under test. OPD is still the round-trip 2(Ltest − Lref)." : "Two-arm interferometer with a reference and measurement path.";
   
   // Update slider outputs
   $("wavelengthOut").textContent = `${input.wavelength} nm`;
@@ -470,6 +477,7 @@ function render() {
 Object.values(controls).forEach((control) => {
   if (control) control.addEventListener("input", render);
 });
+instrumentMode.addEventListener("change", render);
 
 $("reset").addEventListener("click", () => {
   Object.entries(defaults).forEach(([key, value]) => {

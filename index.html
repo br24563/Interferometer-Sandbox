@@ -21,6 +21,14 @@
     <section class="lab-grid" aria-label="Interactive interferometer lab">
       <aside class="card controls-panel">
         <h2>Optical Setup</h2>
+        <div class="control">
+          <div class="control-label"><label for="instrumentMode">Instrument</label></div>
+          <select id="instrumentMode" class="numeric-input" aria-label="Interferometer type">
+            <option value="michelson">Michelson interferometer</option>
+            <option value="twymanGreen">Twyman–Green interferometer</option>
+          </select>
+          <div class="fine-print" id="modeDescription">Two-arm interferometer with a reference and measurement path.</div>
+        </div>
         
         <!-- Wavelength Control -->
         <div class="control-group">
