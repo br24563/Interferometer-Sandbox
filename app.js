@@ -315,15 +315,16 @@ function drawDiagram(input, model, colour) {
 // the Michelson mirror-return drawing above.
 function drawMachZehnderDiagram(input, model, colour) {
   const [ctx, w, h] = canvasContext($("diagram"));
-  const x1=w*.30, x2=w*.70, y=h*.52, upper=h*.27, lower=h*.77;
+  // Reference geometry: BS1 -> two rectangular single-pass arms -> BS2 -> screen.
+  const x1=w*.28, x2=w*.68, y=h*.68, upper=h*.30, lower=h*.68;
   ctx.fillStyle="#07111f"; ctx.fillRect(0,0,w,h);
   ctx.strokeStyle=colour; ctx.lineWidth=2; ctx.lineCap="round";
-  ctx.beginPath(); ctx.moveTo(w*.08,y); ctx.lineTo(x1,y); ctx.lineTo(x2,upper); ctx.lineTo(w*.86,upper); ctx.moveTo(x1,y); ctx.lineTo(x2,lower); ctx.lineTo(w*.86,lower); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(w*.08,y);ctx.lineTo(x1,y);ctx.lineTo(x1,upper);ctx.lineTo(x2,upper);ctx.moveTo(x1,y);ctx.lineTo(x2,y);ctx.lineTo(x2,upper);ctx.lineTo(w*.86,upper);ctx.stroke();
   // Recombination paths from the second beam splitter to two output ports.
   ctx.strokeStyle="#58e6ff"; ctx.beginPath(); ctx.moveTo(x2,upper); ctx.lineTo(x2,lower); ctx.stroke();
-  [[x1,y,"BS1"],[x2,upper,"BS2"]].forEach(([x,yy,label])=>{ctx.strokeStyle="#d7eaff";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(x-11,yy-11);ctx.lineTo(x+11,yy+11);ctx.stroke();ctx.fillStyle="#a1b8d0";ctx.font="11px monospace";ctx.fillText(label,x+17,yy-12);});
+  [[x1,y,"BS1"],[x2,upper,"BS2"]].forEach(([x,yy,label])=>{ctx.strokeStyle="#d7eaff";ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(x-15,yy+15);ctx.lineTo(x+15,yy-15);ctx.stroke();ctx.fillStyle="#a1b8d0";ctx.font="11px monospace";ctx.fillText(label,x+18,yy-15);});
   ctx.fillStyle=colour;ctx.beginPath();ctx.arc(w*.08,y,8,0,TAU);ctx.fill();ctx.fillStyle="#a1b8d0";ctx.font="11px sans-serif";ctx.fillText("Laser",w*.05,y+22);ctx.fillText(`Path A: ${input.armA.toFixed(3)} nm`,w*.40,upper-16);ctx.fillText(`Path B: ${input.armB.toFixed(3)} nm`,w*.40,lower+22);
-  ctx.fillStyle="#ffd166";ctx.fillRect(w*.86-4,upper-13,8,26);ctx.fillRect(w*.86-4,lower-13,8,26);ctx.fillStyle="#a1b8d0";ctx.fillText("D1",w*.88,upper-18);ctx.fillText("D2",w*.88,lower-18);
+  ctx.strokeStyle="#d7eaff";ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(x1-15,upper+15);ctx.lineTo(x1+15,upper-15);ctx.moveTo(x2-15,y+15);ctx.lineTo(x2+15,y-15);ctx.stroke();ctx.fillStyle="#a1b8d0";ctx.fillText("M1",x1-26,upper-20);ctx.fillText("M2",x2+24,y+22);ctx.fillStyle="#ffd166";ctx.fillRect(w*.86-5,upper-34,10,68);ctx.fillStyle="#a1b8d0";ctx.fillText("screen",w*.86,upper+50);
   ctx.fillStyle="#58e6ff";ctx.font="bold 12px monospace";ctx.fillText(`OPD: ${model.opd.toFixed(3)} nm`,12,24);ctx.fillText(`λ: ${input.wavelength} nm`,12,42);
 }
 

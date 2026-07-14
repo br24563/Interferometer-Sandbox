@@ -221,6 +221,7 @@ body {
 
 /* The experiment selector needs room for full instrument names. */
 #instrumentMode { width: 100%; min-height: 48px; font-size: 1rem; font-weight: 650; }
+#lengthUnit { width: 100%; min-height: 44px; font-size: 1rem; font-weight: 650; margin: 6px 0 14px; }
 
 .numeric-input:focus {
   outline: none;
