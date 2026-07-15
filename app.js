@@ -153,55 +153,69 @@ const INSTRUMENTS = {
   sagnac: {
     name: "Sagnac",
     badge: "Sagnac",
-    desc: "A ring interferometer where counter-propagating beams travel identical geometric paths. Rotation of the platform at angular velocity Ω shifts the OPD: Δ = 4AΩ/c (Sagnac effect). Used in laser gyroscopes and fiber-optic gyros.",
-    opdDef: "Δ = 4AΩ / c",
+    desc: "A ring interferometer where two counter-propagating beams travel the same geometric path. When the platform rotates at Ω, they accumulate a non-reciprocal phase difference φ_S = 8πAΩ/(λc) — the Sagnac effect. Used in ring laser gyroscopes and fibre-optic gyros (FOGs).",
+    opdDef: "Δ = 4·N·A·Ω / c",
     opdHeading: "Sagnac OPD:",
     armALabel: "Ring radius (r)",
     armBLabel: "— (not used)",
-    armAHint: "Radius of the circular ring path. The enclosed area A = πr². A larger ring area gives a greater Sagnac OPD per unit of rotation rate, improving sensitivity.",
+    armAHint: "Physical radius of each fiber loop or mirror polygon. Area A = πr². A larger area amplifies the Sagnac shift per unit of rotation.",
     armBHint: "",
-    armGroup: "Ring Geometry",
-    fringeMode: "Circular",
+    armGroup: "Ring / Fibre Geometry",
+    fringeMode: "Phase vs Ω",
     showRefractive: false,
     refractiveNote: "",
     showArmB: false,
     showRotation: true,
     showReflectivity: false,
-    quarterWaveText: "+λ/4 (no mirror scan)",
+    quarterWaveText: "Ω → +λ/4 phase",
     model: (inp) => {
       const lambda = inp.wavelength; // nm
-      const c = 3e17; // nm/s (speed of light)
-      // Ring area A = π r² where r = armA in nm
-      const r_nm = inp.armA;
+      const c = 3e17;               // nm/s
+      // r in nm from arm slider; convert to nm then compute area in nm²
+      const r_nm  = inp.armA;         // nm
+      const N     = inp.fiberTurns;   // number of loops (integer-ish)
       const A_nm2 = Math.PI * r_nm * r_nm;
-      const omega_rad_s = inp.rotationRate * (Math.PI / 180); // convert deg/s → rad/s
-      // Sagnac OPD (nm): 4AΩ/c
-      const opd = (4 * A_nm2 * omega_rad_s) / c;
+      const omega_rad_s = inp.rotationRate * (Math.PI / 180);
+      // Sagnac OPD (nm): 4·N·A·Ω / c
+      const opd = (4 * N * A_nm2 * omega_rad_s) / c;
       const offset = inp.phaseOffset * Math.PI / 180;
       const phase = TAU * (opd / lambda) + offset;
       const gamma = inp.coherence / 100;
       const intensity = 0.5 * (1 + gamma * Math.cos(phase));
+      // Sensitivity: dφ/dΩ  (rad per deg/s)  — useful gyro figure of merit
+      const dPhidOmega_per_degs = (TAU / lambda) * (4 * N * A_nm2 / c) * (Math.PI / 180);
+      // Scale factor: OPD per °/s in nm
+      const scaleFactor_nm_per_degs = (4 * N * A_nm2 / c) * (Math.PI / 180);
+      // Area in m² for display
+      const A_m2 = A_nm2 * 1e-18;
       return {
         lambda, opd, phase, gamma, intensity, fringeOrder: opd / lambda,
-        visibility: gamma, sagnacPhase: phase - offset, omega_rad_s, A_nm2
+        visibility: gamma,
+        sagnacPhase:   phase - offset,
+        omega_rad_s,   A_nm2, A_m2, N,
+        dPhidOmega:    dPhidOmega_per_degs,
+        scaleFactor:   scaleFactor_nm_per_degs,
       };
     },
     modelHTML: (inp) => {
-      const c = 3e17;
-      const r_nm = inp.armA;
-      const A_m2 = Math.PI * (r_nm * 1e-9) * (r_nm * 1e-9);
+      const r_nm  = inp.armA;
+      const N     = inp.fiberTurns;
+      const A_m2  = Math.PI * (r_nm * 1e-9) * (r_nm * 1e-9);
+      const c     = 3e8; // m/s for display
       const omega = inp.rotationRate * (Math.PI / 180);
+      const sf    = (4 * N * A_m2 * (Math.PI/180)) / (inp.wavelength * 1e-9 * c);
       return `
-      <p>Sagnac ring interferometer — non-reciprocal phase shift:</p>
-      <p class="equation">Δ = 4AΩ/c &nbsp;→&nbsp; φ = 2πΔ/λ</p>
+      <p>Fibre-optic Sagnac gyroscope — non-reciprocal phase:</p>
+      <p class="equation">φ_S = 8π·N·A·Ω / (λ·c)</p>
       <p>Where:</p>
       <ul>
-        <li><strong>A = πr²</strong> = ${A_m2.toExponential(3)} m² — enclosed ring area</li>
-        <li><strong>Ω = ${inp.rotationRate.toFixed(1)}°/s</strong> = ${omega.toExponential(3)} rad/s — rotation rate</li>
-        <li><strong>c</strong> — speed of light in vacuum</li>
-        <li><strong>λ = ${inp.wavelength.toFixed(1)} nm</strong> — wavelength</li>
+        <li><strong>N = ${N.toFixed(0)} turns</strong> — fibre coil winding count</li>
+        <li><strong>A = πr²</strong> = ${A_m2.toExponential(3)} m² — single-loop area</li>
+        <li><strong>Ω = ${inp.rotationRate.toFixed(2)}°/s</strong> = ${omega.toExponential(3)} rad/s</li>
+        <li><strong>λ = ${inp.wavelength.toFixed(1)} nm</strong> — source wavelength</li>
+        <li><strong>Scale factor</strong> = ${sf.toFixed(4)} rad/(°/s)</li>
       </ul>
-      <p class="fine-print">The effect is first-order in v/c (non-relativistic regime). Fibre gyroscopes wind many turns to increase effective area N·πr².</p>
+      <p class="fine-print">Earth rotation rate ≈ 15°/hr = 0.00417°/s. FOGs can resolve < 0.001°/hr. Sensitivity scales linearly with N and A.</p>
       `; },
   }
 };
@@ -222,14 +236,23 @@ const SOURCE_PRESETS = {
 
 const DEFAULTS = {
   wavelength: 632.8,
-  armA: 50000,
+  armA: 50000,       // 50 µm default for most instruments
   armB: 50000.5,
   phaseOffset: 0,
   coherence: 100,
   refractiveIndex: 1.0,
   reflectivity: 90,
   rotationRate: 0,
-  tiltAngle: 0
+  tiltAngle: 0,
+  fiberTurns: 100,   // Sagnac: fibre coil winding count
+};
+
+// Per-instrument arm defaults (in nm) — applied on tab switch
+const ARM_DEFAULTS = {
+  michelson:   { armA: 50000,    armB: 50000.5 },
+  machZehnder: { armA: 50000,    armB: 50000.5 },
+  fabryPerot:  { armA: 50000,    armB: 50000   },
+  sagnac:      { armA: 5e7,      armB: 5e7     }, // 5 cm radius
 };
 
 const unitScale = { nm: 1, um: 1000, mm: 1e6 };
@@ -257,6 +280,10 @@ const controls = {
   rotationRateInput:      $("rotationRateInput"),
   tiltAngle:              $("tiltAngle"),
   tiltAngleInput:         $("tiltAngleInput"),
+  fiberTurns:             $("fiberTurns"),
+  fiberTurnsInput:        $("fiberTurnsInput"),
+  fringeAperture:         $("fringeAperture"),
+  fringeApertureInput:    $("fringeApertureInput"),
 };
 
 const lengthUnit = $("lengthUnit");
@@ -298,10 +325,22 @@ document.querySelectorAll(".tab").forEach(tab => {
     tab.classList.add("active");
     tab.setAttribute("aria-selected", "true");
     currentInstrument = tab.dataset.instrument;
+    // Apply per-instrument arm defaults when switching tabs
+    applyArmDefaults(currentInstrument);
     updateInstrumentUI();
     render();
   });
 });
+
+function applyArmDefaults(instr) {
+  const d = ARM_DEFAULTS[instr];
+  if (!d) return;
+  const scale = unitScale[activeLengthUnit];
+  controls.armA.value      = d.armA / scale;
+  controls.armAInput.value = (d.armA / scale).toFixed(3);
+  controls.armB.value      = d.armB / scale;
+  controls.armBInput.value = (d.armB / scale).toFixed(3);
+}
 
 function updateInstrumentUI() {
   const cfg = INSTRUMENTS[currentInstrument];
@@ -321,13 +360,37 @@ function updateInstrumentUI() {
   if ($("refractiveNote")) $("refractiveNote").textContent = cfg.refractiveNote;
   $("reflectivityControl").style.display = cfg.showReflectivity ? "" : "none";
   $("rotationControl").style.display = cfg.showRotation ? "" : "none";
-  // Tilt always visible except Fabry-Pérot (Haidinger rings are angle-swept, not tilt-swept)
-  $("tiltControl").style.display = currentInstrument === "fabryPerot" ? "none" : "";
+  // Tilt hidden for Fabry-Pérot (angular FOV used instead) and Sagnac (not applicable)
+  const hideTilt = currentInstrument === "fabryPerot" || currentInstrument === "sagnac";
+  $("tiltControl").style.display = hideTilt ? "none" : "";
+  // Fringe aperture: hide for Sagnac (sweep uses Ω axis, not spatial FOV)
+  $("fringeApertureControl").style.display = currentInstrument === "sagnac" ? "none" : "";
+  // Update aperture label/unit for FP (angular) vs spatial (others)
+  if (currentInstrument === "fabryPerot") {
+    $("fringeApertureLabel").textContent = "Angular half-angle view";
+    $("fringeApertureUnit").textContent = "mrad";
+    $("fringeApertureHint").textContent = "Half-angle of the angular field shown in the Haidinger ring pattern. Larger value = more rings across the aperture.";
+  } else {
+    $("fringeApertureLabel").textContent = "Fringe view aperture";
+    $("fringeApertureUnit").textContent = "mm";
+    $("fringeApertureHint").textContent = "Physical diameter of the observed detector field (mm). Larger = wider spatial view, may resolve fewer/more fringes depending on OPD.";
+  }
 
-  $("fpRow").style.display = currentInstrument === "fabryPerot" ? "" : "none";
-  $("fsrRow").style.display = currentInstrument === "fabryPerot" ? "" : "none";
-  $("airyLegend").style.display = currentInstrument === "fabryPerot" ? "" : "none";
-  $("sagnacRow").style.display = currentInstrument === "sagnac" ? "" : "none";
+  $("fpRow").style.display        = currentInstrument === "fabryPerot" ? "" : "none";
+  $("fsrRow").style.display       = currentInstrument === "fabryPerot" ? "" : "none";
+  $("airyLegend").style.display   = currentInstrument === "fabryPerot" ? "" : "none";
+  $("sagnacRow").style.display    = currentInstrument === "sagnac" ? "" : "none";
+  $("sagnacSFRow").style.display  = currentInstrument === "sagnac" ? "" : "none";
+  $("fringeOrderRow").style.display = currentInstrument === "sagnac" ? "none" : "";
+  $("fiberTurnsControl").style.display = currentInstrument === "sagnac" ? "" : "none";
+
+  // Update plot/fringe card titles
+  $("plotTitle").textContent = currentInstrument === "sagnac"
+    ? "Phase Shift vs Rotation Rate"
+    : "Intensity vs OPD";
+  $("fringeTitle").textContent = currentInstrument === "sagnac"
+    ? "Rotation Sweep"
+    : "Fringe Pattern";
 
   $("quarterWave").textContent = cfg.quarterWaveText;
 }
@@ -356,6 +419,8 @@ const SYNC_PAIRS = [
   ["reflectivity",     "reflectivityInput"],
   ["rotationRate",     "rotationRateInput"],
   ["tiltAngle",        "tiltAngleInput"],
+  ["fiberTurns",       "fiberTurnsInput"],
+  ["fringeAperture",   "fringeApertureInput"],
 ];
 
 SYNC_PAIRS.forEach(([slider, input]) => {
@@ -404,6 +469,7 @@ function readInputs() {
     reflectivity:  Number(controls.reflectivity.value),
     rotationRate:  Number(controls.rotationRate.value),
     tiltAngle:     Number(controls.tiltAngle.value), // mrad
+    fiberTurns:    Math.max(1, Number(controls.fiberTurns.value)),
   };
 }
 
@@ -796,210 +862,268 @@ function drawSagnac(inp, model, colour) {
 }
 
 // ==================== Fringe Pattern ====================
-// All pixel loops operate in CSS-pixel space (w × h) which matches the
-// logical canvas dimensions returned by setupCanvas. imgData is created
-// at the physical (devicePixelRatio-scaled) canvas resolution but we
-// index using logical coords scaled by dpr for correct centring.
+//
+// PHYSICAL SCALE MODEL
+// --------------------
+// The fringe canvas represents a physical aperture defined by FRINGE_FOV_MM
+// (the detector / beam diameter in mm). This establishes a fixed pixel-per-nm
+// ratio so all fringe spacings are rendered at their true physical sizes.
+//
+//   px_per_nm = (canvas width in px) / (FOV in nm)
+//   FOV in nm = FRINGE_FOV_MM * 1e6
+//
+// Every fringe type derives its pixel pitch directly from the physics:
+//
+//  Circular (equal-inclination):
+//    Ring j has half-angle θ_j where cos θ_j = 1 − j·λ/(2nL)  →  θ_j ≈ √(j·λ/OPD)
+//    Radial position of ring j (for small angles):  r_j = f·θ_j
+//    where f = effective focal length of the observing lens.
+//    We set f so that θ_max (half-angle at aperture edge) equals
+//    half the FOV divided by f  →  f = (FOV/2) / θ_max.
+//    θ_max chosen as √(RING_ORDERS_SHOWN · λ / |OPD|) to display ~RING_ORDERS_SHOWN rings.
+//
+//  Straight (tilt wedge):
+//    Fringe spacing Λ = λ / (2θ_tilt)  [nm physical].
+//    Rendered at true scale: fringe_px = Λ * px_per_nm.
+//    If fringe_px < 2 (sub-pixel) or > W (zero fringes visible), a notice is shown.
+//
+//  Haidinger (Fabry–Pérot):
+//    Ring j half-angle θ_j ≈ √(j · FSR_λ / λ · 2) (for small angles near normal).
+//    Exact: cos θ_j = 1 − j·λ/(2nL) (same as equal-inclination).
+//    Pixel scale identical to circular case.
+
+// Number of ring orders to display in circular/Haidinger mode.
+// Larger = more rings, smaller spacing. Calibrated for 50 µm OPD at 633 nm ≈ 79 orders.
+const RING_ORDERS_SHOWN = 8;
 
 function drawFringePattern(inp, model, colour) {
   const canvas = $("fringeCanvas");
-  // We need both the physical canvas size (for ImageData) and the logical
-  // CSS-pixel size (for geometry maths). setupCanvas already scaled the ctx.
-  const dpr  = devicePixelRatio || 1;
-  const rect  = canvas.getBoundingClientRect();
-  const W = rect.width,  H = rect.height;   // logical CSS pixels
-  const PW = Math.round(W * dpr), PH = Math.round(H * dpr); // physical pixels
+  const dpr   = devicePixelRatio || 1;
+  const rect   = canvas.getBoundingClientRect();
+  const W = rect.width,  H = rect.height;
+  const PW = Math.round(W * dpr), PH = Math.round(H * dpr);
 
-  // Re-apply dimensions (setupCanvas may not have been called yet for this frame)
   canvas.width  = PW;
   canvas.height = PH;
   const ctx = canvas.getContext("2d");
   ctx.scale(dpr, dpr);
 
+  // Sagnac: show rotation-sweep fringe (I vs Ω image)
+  if (currentInstrument === "sagnac") {
+    drawSagnacSweep(ctx, W, H, PW, PH, dpr, model, colour, inp);
+    return;
+  }
+
+  // ------ Physical field-of-view ------
+  // Read FOV from the HTML control (mm). Default 10 mm.
+  const fov_mm  = Math.max(0.01, Number($("fringeAperture")?.value ?? 10));
+  const fov_nm  = fov_mm * 1e6;          // nm
+  const px_per_nm = W / fov_nm;          // logical px per nm
+
   const gamma = model.gamma;
-  const tilt  = inp.tiltAngle; // mrad
+  const tilt  = inp.tiltAngle;           // mrad
 
   if (currentInstrument === "fabryPerot") {
-    drawHaidingerFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma);
+    drawHaidingerFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
+                         inp, px_per_nm, fov_mm);
   } else if (tilt > 0.01) {
-    drawStraightFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma, tilt, inp.wavelength);
+    drawStraightFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
+                        tilt, inp.wavelength, px_per_nm, fov_mm);
   } else {
-    drawCircularFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma);
+    drawCircularFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
+                        inp, px_per_nm, fov_mm);
   }
 }
 
-// ---- Shared ImageData helper ----
-// Returns an ImageData allocated at the physical pixel size, plus a setter
-// function that accepts logical (x,y) and intensity [0,1].
-function makeImgData(ctx, PW, PH, dpr, sr, sg, sb, bg = 0) {
+// ==================== Sagnac rotation-sweep fringe ====================
+// Renders I(Ω) = ½[1 + γ cos(SF·Ω + φ₀)] as a horizontal stripe image,
+// with the current Ω position marked by a vertical line and the Earth
+// rate (Ω⊕ = 15°/hr) annotated. The x-axis spans ±2π/SF in Ω.
+function drawSagnacSweep(ctx, W, H, PW, PH, dpr, model, colour, inp) {
+  const RULER_H = 28;
+  const imageH  = H - RULER_H;
+
+  const [sr, sg, sb] = parseColour(colour);
+  const { imgData, data } = makeImgData(ctx, PW, PH);
+
+  const gamma  = model.gamma;
+  const SF     = model.dPhidOmega;       // rad / (°/s)
+  const phOff  = inp.phaseOffset * Math.PI / 180;
+
+  // Span the x-axis over ±2 full fringe periods in Ω
+  const omegaHalf = SF !== 0 ? 2 * Math.PI / Math.abs(SF) : 1000;
+  const omega_min = -omegaHalf;
+  const omega_max =  omegaHalf;
+  const omegaSpan = omega_max - omega_min;
+
+  const PH_img = Math.round(imageH * dpr);
+
+  // Vertical gradient: intensity varies only along x (Ω axis)
+  for (let px2 = 0; px2 < PW; px2++) {
+    const omega = omega_min + (px2 / PW) * omegaSpan;
+    const phi   = SF * omega + phOff;
+    const I     = 0.5 * (1 + gamma * Math.cos(phi));
+    const r = Math.round(sr * I);
+    const g = Math.round(sg * I);
+    const b = Math.round(sb * I);
+    for (let py = 0; py < PH_img; py++) {
+      const idx = (py * PW + px2) * 4;
+      data[idx] = r; data[idx+1] = g; data[idx+2] = b;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  // Current Ω vertical marker
+  const currentOmega = inp.rotationRate;
+  if (currentOmega >= omega_min && currentOmega <= omega_max) {
+    const xCur = ((currentOmega - omega_min) / omegaSpan) * W;
+    ctx.save();
+    ctx.strokeStyle = "#3dd6f5"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(xCur, 0); ctx.lineTo(xCur, imageH); ctx.stroke();
+    // Small triangle marker at top
+    ctx.fillStyle = "#3dd6f5";
+    ctx.beginPath();
+    ctx.moveTo(xCur, 4);
+    ctx.lineTo(xCur - 5, 14);
+    ctx.lineTo(xCur + 5, 14);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  // Earth rate marker: 15°/hr = 4.167e-3 °/s
+  const earthOmega = 15 / 3600;
+  if (earthOmega >= omega_min && earthOmega <= omega_max) {
+    const xEarth = ((earthOmega - omega_min) / omegaSpan) * W;
+    ctx.save();
+    ctx.strokeStyle = "#f5c542"; ctx.lineWidth = 0.8;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(xEarth, 0); ctx.lineTo(xEarth, imageH); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#f5c542"; ctx.font = "bold 8px monospace"; ctx.textAlign = "left";
+    ctx.fillText("Ω⊕", xEarth + 2, 14);
+    ctx.restore();
+  }
+
+  // Ruler (Ω axis)
+  {
+    const rulerY = imageH;
+    ctx.fillStyle = "rgba(6,14,26,0.9)";
+    ctx.fillRect(0, rulerY, W, RULER_H);
+
+    // Nice tick step
+    const TICKS = 6;
+    const rawStep = omegaSpan / TICKS;
+    const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+    let step = mag;
+    for (const m of [1, 2, 5, 10]) {
+      if (omegaSpan / (m * mag) <= TICKS + 1) { step = m * mag; break; }
+    }
+
+    ctx.strokeStyle = "#3dd6f5"; ctx.lineWidth = 0.8;
+    ctx.fillStyle   = "#7da4c0"; ctx.font = "9px monospace";
+
+    const firstTick = Math.ceil(omega_min / step) * step;
+    for (let omega = firstTick; omega <= omega_max + step * 0.01; omega += step) {
+      const xp = ((omega - omega_min) / omegaSpan) * W;
+      ctx.beginPath(); ctx.moveTo(xp, rulerY); ctx.lineTo(xp, rulerY + 5); ctx.stroke();
+      const lbl = Math.abs(omega) < 0.001 ? omega.toExponential(1)
+                : Math.abs(omega) < 1     ? omega.toFixed(4)
+                : omega.toFixed(2);
+      ctx.textAlign = "center"; ctx.fillText(lbl, xp, H - 5);
+    }
+    ctx.fillStyle = "#3dd6f5"; ctx.font = "bold 9px monospace";
+    ctx.textAlign = "left"; ctx.fillText("Ω (°/s)", 3, H - 5);
+  }
+
+  // Legend text
+  const sfStr = Math.abs(SF) < 1e-3 ? SF.toExponential(3) : SF.toFixed(4);
+  fringeLegend(ctx, W, H, `SF = ${sfStr} rad/(°/s) · N=${inp.fiberTurns.toFixed(0)}`, RULER_H);
+}
+
+// ==================== Shared helpers ====================
+
+// Allocate a physical-pixel ImageData, pre-fill with dark background.
+function makeImgData(ctx, PW, PH) {
   const imgData = ctx.createImageData(PW, PH);
   const data    = imgData.data;
-  // Fill background (dark)
-  for (let i = 0; i < PW * PH * 4; i += 4) {
-    data[i] = bg; data[i+1] = bg; data[i+2] = bg; data[i+3] = 255;
-  }
-  const set = (lx, ly, I) => {
-    const px = Math.round(lx * dpr), py = Math.round(ly * dpr);
-    if (px < 0 || py < 0 || px >= PW || py >= PH) return;
-    const idx = (py * PW + px) * 4;
-    data[idx]   = sr * I;
-    data[idx+1] = sg * I;
-    data[idx+2] = sb * I;
-    data[idx+3] = 255;
-  };
-  return { imgData, data, set };
+  for (let i = 0; i < data.length; i += 4) { data[i+3] = 255; }
+  return { imgData, data };
 }
 
-// ---- Circular / bull's-eye fringes (Michelson / MZI / Sagnac at tilt=0) ----
-// Physical model: equal-inclination fringes formed by a slightly diverging beam.
-// The fringe order at radius r is m(r) = m₀ + r²·k where k controls ring density.
-// We map the current fringe order m₀ = OPD/λ to set the central bright/dark state.
-function drawCircularFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma) {
-  const cx = W / 2, cy = H / 2;
-  const maxR = Math.min(W, H) * 0.46;
-  const [sr, sg, sb] = parseColour(colour);
-  const { imgData, data } = makeImgData(ctx, PW, PH, dpr, sr, sg, sb);
+// Draw a horizontal ruler along the bottom of the fringe view.
+// span_nm = total physical width of the canvas in nm.
+// unit: auto-selects µm or mm.
+function drawRuler(ctx, W, H, span_nm, rulerH = 22) {
+  const RULER_Y = H - rulerH;
 
-  // Number of visible rings = how many complete fringe orders span the aperture.
-  // We fix ~5 rings across the aperture for a clean display regardless of OPD.
-  const ringsAcross = 5;
-  // At pixel r the extra OPD (in units of λ) relative to centre is r²·k
-  // We want ringsAcross complete cycles when r = maxR:
-  // ringsAcross = maxR² · k  →  k = ringsAcross / maxR²
-  const k = ringsAcross / (maxR * maxR);
+  // Semi-transparent ruler background
+  ctx.fillStyle = "rgba(6,14,26,0.85)";
+  ctx.fillRect(0, RULER_Y, W, rulerH);
 
-  // Central fringe order from physics (fractional part drives centre colour)
-  const m0 = model.fringeOrder; // = OPD / lambda (can be large)
-
-  for (let py = 0; py < PH; py++) {
-    const ly = py / dpr;
-    const dy = ly - cy;
-    for (let px = 0; px < PW; px++) {
-      const lx = px / dpr;
-      const r2 = (lx - cx) * (lx - cx) + dy * dy;
-      const r  = Math.sqrt(r2);
-      if (r > maxR) continue;
-
-      // Phase: central phase from model plus radial term (r² gives circular rings)
-      const phase = model.phase + TAU * k * r2;
-      const I = 0.5 * (1 + gamma * Math.cos(phase));
-      const idx = (py * PW + px) * 4;
-      data[idx]   = sr * I;
-      data[idx+1] = sg * I;
-      data[idx+2] = sb * I;
-      data[idx+3] = 255;
-    }
+  // Choose a "nice" tick interval
+  const TICKS = 6;
+  const rawStep_nm = span_nm / TICKS;
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep_nm)));
+  const niceMuls = [1, 2, 5, 10];
+  let step_nm = mag;
+  for (const m of niceMuls) {
+    const s = m * mag;
+    if (span_nm / s <= TICKS + 1) { step_nm = s; break; }
   }
-  ctx.putImageData(imgData, 0, 0);
 
-  // Circular aperture border
-  ctx.beginPath();
-  ctx.arc(cx, cy, maxR, 0, TAU);
-  ctx.strokeStyle = "#2a4a6a";
-  ctx.lineWidth = 1;
-  ctx.stroke();
+  // Unit labelling
+  let unitDiv, unitLabel;
+  if (span_nm < 5000) {           // < 5 µm  → nm
+    unitDiv = 1;        unitLabel = "nm";
+  } else if (span_nm < 5e6) {    // < 5 mm  → µm
+    unitDiv = 1e3;      unitLabel = "µm";
+  } else {                        //          → mm
+    unitDiv = 1e6;      unitLabel = "mm";
+  }
 
-  // Label: show fringe order at centre
-  const mFrac = ((m0 % 1) + 1) % 1;
-  const centreBright = mFrac < 0.1 || mFrac > 0.9;
-  fringeLegend(ctx, W, H,
-    `Equal-inclination fringes · centre ${centreBright ? "bright" : "dark"} · m₀ = ${m0.toFixed(2)}`);
+  ctx.fillStyle = "#3dd6f5";
+  ctx.font = "9px monospace";
+  ctx.textAlign = "left";
+  ctx.fillText(unitLabel, 3, H - 5);
+
+  // Ticks
+  ctx.strokeStyle = "#3dd6f5";
+  ctx.fillStyle   = "#7da4c0";
+  ctx.font = "9px monospace";
+
+  const firstTick = Math.ceil(0 / step_nm) * step_nm;
+  for (let x_nm = firstTick; x_nm <= span_nm; x_nm += step_nm) {
+    const px = (x_nm / span_nm) * W;
+    ctx.beginPath();
+    ctx.lineWidth = 0.8;
+    ctx.moveTo(px, RULER_Y);
+    ctx.lineTo(px, RULER_Y + 5);
+    ctx.stroke();
+    const label = (x_nm / unitDiv).toPrecision(3).replace(/\.?0+$/, "");
+    ctx.textAlign = "center";
+    ctx.fillText(label, px, H - 5);
+  }
+
+  // Scale bar: one step_nm wide, labelled, in bottom-right corner
+  const barW = (step_nm / span_nm) * W;
+  const barX = W - barW - 8;
+  const barY = RULER_Y + 10;
+  ctx.strokeStyle = "#3dd6f5"; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(barX, barY); ctx.lineTo(barX + barW, barY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(barX, barY - 3); ctx.lineTo(barX, barY + 3); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(barX + barW, barY - 3); ctx.lineTo(barX + barW, barY + 3); ctx.stroke();
+  const barLabel = `${(step_nm / unitDiv).toPrecision(3).replace(/\.?0+$/, "")} ${unitLabel}`;
+  ctx.fillStyle = "#3dd6f5"; ctx.font = "bold 9px monospace"; ctx.textAlign = "center";
+  ctx.fillText(barLabel, barX + barW / 2, barY - 5);
 }
 
-// ---- Straight fringes from mirror tilt / wedge ----
-// Λ = λ / (2θ) where θ is the tilt in radians.
-// We always show exactly ~7 fringe periods across the canvas width regardless
-// of the physical Λ, but annotate the true physical spacing.
-function drawStraightFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma, tiltMrad, lambda) {
-  const [sr, sg, sb] = parseColour(colour);
-  const { imgData, data } = makeImgData(ctx, PW, PH, dpr, sr, sg, sb);
-
-  // Physical fringe spacing (nm) from tilt
-  const thetaRad = tiltMrad * 1e-3;
-  const Lambda_nm = lambda / (2 * thetaRad);   // true physical spacing in nm
-
-  // Display: force 7 fringes visible across width W so the pattern is always readable
-  const Lx_px = W / 7;   // logical pixels per fringe period
-
-  for (let py = 0; py < PH; py++) {
-    for (let px = 0; px < PW; px++) {
-      const lx = px / dpr;
-      // Phase: model.phase at lx=0 then advances linearly across canvas
-      const phase = model.phase + TAU * (lx / Lx_px);
-      const I = 0.5 * (1 + gamma * Math.cos(phase));
-      const idx = (py * PW + px) * 4;
-      data[idx]   = sr * I;
-      data[idx+1] = sg * I;
-      data[idx+2] = sb * I;
-      data[idx+3] = 255;
-    }
-  }
-  ctx.putImageData(imgData, 0, 0);
-
-  // Annotate physical spacing
-  const Λ_disp = Lambda_nm < 1e7
-    ? `Λ = ${Lambda_nm >= 1000 ? (Lambda_nm/1000).toFixed(2)+"µm" : Lambda_nm.toFixed(0)+"nm"}`
-    : "Λ = ∞";
-  fringeLegend(ctx, W, H, `Straight fringes (tilt θ=${tiltMrad.toFixed(2)}mrad) · ${Λ_disp}`);
-}
-
-// ---- Haidinger rings (Fabry–Pérot equal-inclination) ----
-// T(r) = Airy function at angle θ(r).  At r=0 the beam is normal (θ=0),
-// so the on-axis phase is exactly model.phase (= 2π·2nL/λ + φ₀).
-// Moving to larger r increases the effective cavity round-trip: φ(r) = φ₀·cos θ(r).
-// We model cos θ(r) ≈ 1 − (r/maxR)²·(1 − cos_edge) where cos_edge ≈ cos(15°)≈0.97.
-function drawHaidingerFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma) {
-  const cx = W / 2, cy = H / 2;
-  const maxR = Math.min(W, H) * 0.46;
-  const [sr, sg, sb] = parseColour(colour);
-  const { imgData, data } = makeImgData(ctx, PW, PH, dpr, sr, sg, sb);
-  const F = model.F !== undefined ? model.F : 1;
-
-  // Edge incidence angle maps to cosTheta_edge (we use 20° ≈ 0.940)
-  const cosEdge = 0.940;
-
-  for (let py = 0; py < PH; py++) {
-    const ly = py / dpr;
-    for (let px = 0; px < PW; px++) {
-      const lx = px / dpr;
-      const r2 = (lx - cx) * (lx - cx) + (ly - cy) * (ly - cy);
-      const r  = Math.sqrt(r2);
-      if (r > maxR) continue;
-
-      // Smooth cosTheta from 1 at centre to cosEdge at aperture edge
-      const cosTheta = 1 - (r / maxR) * (r / maxR) * (1 - cosEdge);
-      // Round-trip phase at this angle
-      const phase = model.phase * cosTheta;
-      const T = (1 / (1 + F * Math.sin(phase / 2) ** 2));
-      const I = T * gamma + 0.5 * (1 - gamma);  // coherence envelope
-
-      const idx = (py * PW + px) * 4;
-      data[idx]   = sr * I;
-      data[idx+1] = sg * I;
-      data[idx+2] = sb * I;
-      data[idx+3] = 255;
-    }
-  }
-  ctx.putImageData(imgData, 0, 0);
-
-  ctx.beginPath();
-  ctx.arc(cx, cy, maxR, 0, TAU);
-  ctx.strokeStyle = "#2a4a6a";
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  const finStr = model.finesse ? model.finesse.toFixed(1) : "—";
-  const Rstr   = (model.R * 100).toFixed(1);
-  fringeLegend(ctx, W, H, `Haidinger rings · ℱ = ${finStr} · R = ${Rstr}%`);
-}
-
-function fringeLegend(ctx, W, H, text) {
-  ctx.fillStyle = "rgba(6,14,26,0.82)";
-  ctx.fillRect(0, H - 20, W, 20);
-  ctx.fillStyle = "#7da4c0";
-  ctx.font = "10px monospace";
-  ctx.textAlign = "center";
-  ctx.fillText(text, W / 2, H - 6);
+// Draw a colour-intensity legend (vertical gradient bar, right side) — optional.
+function fringeLegend(ctx, W, H, text, rulerH = 22) {
+  // Text overlaid on the ruler area (left side)
+  ctx.fillStyle = "#e8f4ff";
+  ctx.font = "bold 9px monospace";
+  ctx.textAlign = "left";
+  ctx.fillText(text, 28, H - rulerH + 13);
 }
 
 function parseColour(css) {
@@ -1007,11 +1131,255 @@ function parseColour(css) {
   return m ? [+m[1], +m[2], +m[3]] : [0, 200, 255];
 }
 
-// ==================== Intensity vs OPD Plot ====================
+// ==================== Circular fringes (equal-inclination) ====================
+// Physical model: for a beam of divergence half-angle θ, the OPD at angle θ is
+//   OPD(θ) = 2n·L·cos(θ)  →  OPD(0) − OPD(θ) ≈ n·L·θ²  (small angle)
+// The j-th dark ring occurs at r_j = f·θ_j where θ_j = √(j·λ / OPD₀).
+// We choose focal length f so that RING_ORDERS_SHOWN rings fit in the aperture.
+function drawCircularFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
+                             inp, px_per_nm, fov_mm) {
+  const RULER_H = 22;
+  const imageH  = H - RULER_H;
+  const cx = W / 2, cy = imageH / 2;
+  const aperR_nm = fov_mm * 1e6 / 2;              // aperture radius in nm
+  const aperR_px = aperR_nm * px_per_nm * 0.92;   // leave a thin border
+  const maxR_px  = Math.min(aperR_px, Math.min(W, imageH) * 0.46);
+
+  const [sr, sg, sb] = parseColour(colour);
+  const { imgData, data } = makeImgData(ctx, PW, PH);
+
+  // OPD₀: the on-axis optical path difference (nm). If zero → solid fill.
+  const OPD0 = Math.abs(model.opd);
+
+  if (OPD0 < 1e-6) {
+    // Zero OPD: uniform intensity from phase offset alone
+    const I = 0.5 * (1 + gamma * Math.cos(model.phase));
+    const ib = Math.round(I * 255);
+    for (let py = 0; py < Math.round(imageH * dpr); py++) {
+      const ly = py / dpr - cy;
+      for (let px2 = 0; px2 < PW; px2++) {
+        const lx = px2 / dpr - cx;
+        if (Math.sqrt(lx*lx + ly*ly) > maxR_px) continue;
+        const idx = (py * PW + px2) * 4;
+        data[idx] = sr * I; data[idx+1] = sg * I; data[idx+2] = sb * I;
+      }
+    }
+  } else {
+    // Focal length f so that ring RING_ORDERS_SHOWN lands at maxR_px:
+    //   maxR_px = f_px · θ_max,   θ_max = sqrt(RING_ORDERS_SHOWN · λ / OPD0)
+    const lambda = model.lambda;
+    const theta_max = Math.sqrt(RING_ORDERS_SHOWN * lambda / OPD0);
+    const f_px = maxR_px / theta_max;              // px per radian
+
+    const PH_img = Math.round(imageH * dpr);
+    for (let py = 0; py < PH_img; py++) {
+      const ly = py / dpr - cy;
+      for (let px2 = 0; px2 < PW; px2++) {
+        const lx = px2 / dpr - cx;
+        const r_px = Math.sqrt(lx * lx + ly * ly);
+        if (r_px > maxR_px) continue;
+
+        // Physical angle θ in radians
+        const theta = r_px / f_px;
+        // OPD(θ) = OPD0 · cos(θ) ≈ OPD0 · (1 − θ²/2) for small θ
+        const opd_theta = OPD0 * (1 - theta * theta / 2);
+        // Use sign of original OPD for correct phase direction
+        const signed_opd = Math.sign(model.opd) * opd_theta;
+        const phaseOffset = inp.phaseOffset * Math.PI / 180;
+        const phase = TAU * (signed_opd / lambda) + phaseOffset;
+        const I = 0.5 * (1 + gamma * Math.cos(phase));
+
+        const idx = (py * PW + px2) * 4;
+        data[idx] = sr * I; data[idx+1] = sg * I; data[idx+2] = sb * I;
+      }
+    }
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+
+  // Aperture circle border
+  ctx.beginPath();
+  ctx.arc(cx, cy, maxR_px, 0, TAU);
+  ctx.strokeStyle = "#2a4a6a"; ctx.lineWidth = 1; ctx.stroke();
+
+  // Centre crosshair
+  ctx.strokeStyle = "rgba(61,214,245,0.25)"; ctx.lineWidth = 0.6;
+  ctx.setLineDash([2, 3]);
+  ctx.beginPath(); ctx.moveTo(cx - 12, cy); ctx.lineTo(cx + 12, cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, cy - 12); ctx.lineTo(cx, cy + 12); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Physical ring spacing annotation
+  const ringSpacing_nm = OPD0 < 1 ? null
+    : model.lambda * model.lambda / (OPD0 * 2 * Math.PI);  // not exact but indicative
+  // Exact: first ring radius = f_px · sqrt(λ/OPD0) in px → in nm: * (1/px_per_nm)
+  const f_px2 = OPD0 < 1 ? null : maxR_px / Math.sqrt(RING_ORDERS_SHOWN * model.lambda / OPD0);
+  const r1_px  = f_px2 ? f_px2 * Math.sqrt(model.lambda / OPD0) : null;
+  const r1_nm  = r1_px ? r1_px / px_per_nm : null;
+  const r1_str = r1_nm == null ? "—"
+    : r1_nm < 1000 ? r1_nm.toFixed(1) + " nm"
+    : r1_nm < 1e6  ? (r1_nm/1000).toFixed(3) + " µm"
+    :                (r1_nm/1e6).toFixed(4)   + " mm";
+
+  const mFrac = ((model.fringeOrder % 1) + 1) % 1;
+  const centre = mFrac < 0.1 || mFrac > 0.9 ? "bright" : mFrac > 0.4 && mFrac < 0.6 ? "dark" : "partial";
+  fringeLegend(ctx, W, H,
+    `Equal-incl. · r₁ = ${r1_str} · centre ${centre}`, RULER_H);
+  drawRuler(ctx, W, H, fov_mm * 1e6, RULER_H);
+}
+
+// ==================== Straight (wedge/tilt) fringes ====================
+// Fringe spacing Λ = λ / (2·θ_tilt)  [nm physical].
+// Rendered at true scale via px_per_nm; if too fine or too coarse a notice is shown.
+function drawStraightFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
+                             tiltMrad, lambda, px_per_nm, fov_mm) {
+  const RULER_H = 22;
+  const imageH  = H - RULER_H;
+
+  const [sr, sg, sb] = parseColour(colour);
+  const { imgData, data } = makeImgData(ctx, PW, PH);
+
+  // Physical fringe spacing
+  const thetaRad  = tiltMrad * 1e-3;
+  const Lambda_nm = lambda / (2 * thetaRad);  // nm
+  const Lambda_px = Lambda_nm * px_per_nm;    // logical px per fringe
+
+  const PH_img = Math.round(imageH * dpr);
+
+  if (Lambda_px < 1.5) {
+    // Fringes unresolvable at this FOV/tilt — show notice
+    ctx.fillStyle = "#060e1a"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#7da4c0"; ctx.font = "11px monospace"; ctx.textAlign = "center";
+    ctx.fillText("Fringes too fine to resolve", W/2, imageH/2 - 8);
+    ctx.fillText("Reduce tilt or reduce FOV", W/2, imageH/2 + 8);
+  } else {
+    for (let py = 0; py < PH_img; py++) {
+      for (let px2 = 0; px2 < PW; px2++) {
+        // x_nm = physical position from left edge of canvas
+        const x_nm = (px2 / dpr) * (fov_mm * 1e6 / W);
+        // Phase advances by 2π per fringe period Λ_nm
+        const phaseOffset = model.phase;
+        const phase = phaseOffset + TAU * (x_nm / Lambda_nm);
+        const I = 0.5 * (1 + gamma * Math.cos(phase));
+        const idx = (py * PW + px2) * 4;
+        data[idx] = sr * I; data[idx+1] = sg * I; data[idx+2] = sb * I;
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    // Overlay fringe-spacing annotation: draw one fringe-width bracket
+    if (Lambda_px >= 8 && Lambda_px <= W * 3) {
+      const bracketY = imageH * 0.12;
+      const x0 = W / 2 - Lambda_px / 2;
+      const x1 = W / 2 + Lambda_px / 2;
+      ctx.strokeStyle = "rgba(245,197,66,0.8)"; ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(x0, bracketY); ctx.lineTo(x1, bracketY); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x0, bracketY-4); ctx.lineTo(x0, bracketY+4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x1, bracketY-4); ctx.lineTo(x1, bracketY+4); ctx.stroke();
+      const Λ_str = Lambda_nm < 1000 ? Lambda_nm.toFixed(1)+"nm"
+                  : Lambda_nm < 1e6  ? (Lambda_nm/1000).toFixed(2)+"µm"
+                  :                    (Lambda_nm/1e6).toFixed(3)+"mm";
+      ctx.fillStyle = "#f5c542"; ctx.font = "bold 9px monospace"; ctx.textAlign = "center";
+      ctx.fillText(`Λ = ${Λ_str}`, (x0+x1)/2, bracketY - 8);
+    }
+  }
+
+  fringeLegend(ctx, W, H,
+    `Tilt θ = ${tiltMrad.toFixed(2)} mrad · straight fringes`, RULER_H);
+  drawRuler(ctx, W, H, fov_mm * 1e6, RULER_H);
+}
+
+// ==================== Haidinger rings (Fabry–Pérot) ====================
+// The Fabry–Pérot equal-inclination pattern: transmission peaks at cos(θ) = mλ/(2nL).
+// For a fixed order m₀ near normal incidence, the j-th ring from centre is at
+//   cos(θ_j) = (m₀ − j)·λ/(2nL)  →  θ_j ≈ √(2j·λ/(2nL)) = √(j·FSR/λ·2) [small angle]
+// The angular FOV shown is ±THETA_MAX_MRAD milliradians.
+// Pixel scale: f_px = (maxR_px) / (THETA_MAX in rad).
+function drawHaidingerFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
+                              inp, px_per_nm, fov_mm) {
+  const RULER_H = 22;
+  const imageH  = H - RULER_H;
+  const cx = W / 2, cy = imageH / 2;
+
+  const [sr, sg, sb] = parseColour(colour);
+  const { imgData, data } = makeImgData(ctx, PW, PH);
+  const F = model.F !== undefined ? model.F : 1;
+
+  // For FP we use an angular FOV, not a spatial one.
+  // The aperture control now repurposes as "half-angle view (mrad)".
+  const halfAngle_mrad = Math.max(0.1, Number($("fringeAperture")?.value ?? 10));
+  const halfAngle_rad  = halfAngle_mrad * 1e-3;
+  const maxR_px = Math.min(W, imageH) * 0.46;
+  const f_px = maxR_px / halfAngle_rad;   // px per radian
+
+  const lambda  = model.lambda;           // nm
+  const OPD0    = Math.abs(model.opd);    // nm = 2nL
+  const phaseOffset = inp.phaseOffset * Math.PI / 180;
+
+  const PH_img = Math.round(imageH * dpr);
+  for (let py = 0; py < PH_img; py++) {
+    const ly = py / dpr - cy;
+    for (let px2 = 0; px2 < PW; px2++) {
+      const lx = px2 / dpr - cx;
+      const r_px = Math.sqrt(lx * lx + ly * ly);
+      if (r_px > maxR_px) continue;
+
+      const theta = r_px / f_px;                         // radians from optical axis
+      const cosTheta = Math.cos(theta);
+      const phase = TAU * (OPD0 * cosTheta / lambda) + phaseOffset;
+      const T = 1 / (1 + F * Math.sin(phase / 2) ** 2);
+      const I = T * gamma + 0.5 * (1 - gamma);
+
+      const idx = (py * PW + px2) * 4;
+      data[idx] = sr * I; data[idx+1] = sg * I; data[idx+2] = sb * I;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  // Aperture border
+  ctx.beginPath();
+  ctx.arc(cx, cy, maxR_px, 0, TAU);
+  ctx.strokeStyle = "#2a4a6a"; ctx.lineWidth = 1; ctx.stroke();
+
+  // Centre crosshair
+  ctx.strokeStyle = "rgba(61,214,245,0.25)"; ctx.lineWidth = 0.6;
+  ctx.setLineDash([2, 3]);
+  ctx.beginPath(); ctx.moveTo(cx-12, cy); ctx.lineTo(cx+12, cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, cy-12); ctx.lineTo(cx, cy+12); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Angular ruler along bottom (in mrad)
+  const span_mrad = halfAngle_mrad * 2;
+  {
+    const rulerY = H - RULER_H;
+    ctx.fillStyle = "rgba(6,14,26,0.85)";
+    ctx.fillRect(0, rulerY, W, RULER_H);
+
+    const TICKS = 5;
+    const step_mrad = +(span_mrad / TICKS).toFixed(2);
+    ctx.fillStyle = "#7da4c0"; ctx.font = "9px monospace";
+    ctx.strokeStyle = "#3dd6f5"; ctx.lineWidth = 0.8;
+    for (let ang = -halfAngle_mrad; ang <= halfAngle_mrad + 0.001; ang += step_mrad) {
+      const px_pos = ((ang + halfAngle_mrad) / span_mrad) * W;
+      ctx.beginPath(); ctx.moveTo(px_pos, rulerY); ctx.lineTo(px_pos, rulerY + 5); ctx.stroke();
+      ctx.textAlign = "center";
+      ctx.fillText(ang.toFixed(1), px_pos, H - 5);
+    }
+    ctx.fillStyle = "#3dd6f5"; ctx.font = "bold 9px monospace";
+    ctx.textAlign = "left"; ctx.fillText("mrad", 3, H - 5);
+  }
+
+  const finStr = model.finesse ? model.finesse.toFixed(1) : "—";
+  fringeLegend(ctx, W, H,
+    `ℱ = ${finStr} · ±${halfAngle_mrad.toFixed(1)} mrad half-angle`, RULER_H);
+}
+
+// ==================== Intensity vs OPD Plot  /  Sagnac: φ vs Ω ====================
 
 function drawPlot(inp, model, colour) {
   const [ctx, w, h] = setupCanvas($("plot"));
-  const box = { l: 46, r: 12, t: 12, b: 30 };
+  const box = { l: 46, r: 12, t: 14, b: 30 };
   const pw = w - box.l - box.r;
   const ph = h - box.t - box.b;
 
@@ -1034,17 +1402,95 @@ function drawPlot(inp, model, colour) {
     ctx.beginPath(); ctx.moveTo(x, box.t); ctx.lineTo(x, box.t + ph); ctx.stroke();
   }
 
-  // Lambda tick marks
+  const N = 320;
+  const gamma = inp.coherence / 100;
+  const phaseOffset = inp.phaseOffset * Math.PI / 180;
+
+  // ---- Sagnac: plot φ_S (rad) vs Ω (°/s) ----
+  if (currentInstrument === "sagnac") {
+    // Sweep Ω over ±OmegaMax °/s, scaled so ~4π phase fits the plot
+    // Scale factor: dφ/dΩ  (rad per °/s)
+    const SF = model.dPhidOmega;          // rad / (°/s)
+    // Choose x-axis span so ±4π rad are visible
+    const omegaSpan_degs = SF !== 0 ? 4 * Math.PI / Math.abs(SF) : 1000;
+    const omega_min = -omegaSpan_degs / 2;
+    const omega_max =  omegaSpan_degs / 2;
+
+    // Cosine fringe curve  I(Ω) = ½[1 + γ cos(SF·Ω + φ₀)]
+    ctx.strokeStyle = colour; ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const omega = omega_min + t * (omega_max - omega_min);
+      const phi = SF * omega + phaseOffset;
+      const I = 0.5 * (1 + gamma * Math.cos(phi));
+      const x = box.l + t * pw;
+      const y = box.t + ph * (1 - I);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Earth rotation rate marker: 15 °/hr = 0.004167 °/s
+    const earthOmega_degs = 15 / 3600; // °/s
+    if (earthOmega_degs >= omega_min && earthOmega_degs <= omega_max) {
+      const xEarth = box.l + ((earthOmega_degs - omega_min) / (omega_max - omega_min)) * pw;
+      ctx.save();
+      ctx.strokeStyle = "#f5c542"; ctx.lineWidth = 0.8; ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(xEarth, box.t); ctx.lineTo(xEarth, box.t + ph); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "#f5c542"; ctx.font = "8px monospace"; ctx.textAlign = "left";
+      ctx.fillText("Ω⊕", xEarth + 2, box.t + 10);
+      ctx.restore();
+    }
+
+    // Current Ω marker
+    const currentOmega = inp.rotationRate;
+    const tx = (currentOmega - omega_min) / (omega_max - omega_min);
+    if (tx >= 0 && tx <= 1) {
+      const cx = box.l + tx * pw;
+      const phi_now = SF * currentOmega + phaseOffset;
+      const I_now = 0.5 * (1 + gamma * Math.cos(phi_now));
+      const cy = box.t + ph * (1 - I_now);
+      ctx.fillStyle = "#3dd6f5";
+      ctx.beginPath(); ctx.arc(cx, cy, 4.5, 0, TAU); ctx.fill();
+      ctx.strokeStyle = "#3dd6f5"; ctx.lineWidth = 0.7; ctx.setLineDash([2, 3]);
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, box.t + ph); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Axis labels
+    ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace"; ctx.textAlign = "center";
+    ctx.fillText("Rotation rate Ω (°/s)", w / 2, h - 4);
+    ctx.save();
+    ctx.translate(12, h / 2); ctx.rotate(-Math.PI / 2);
+    ctx.fillText("I / I₀", 0, 0);
+    ctx.restore();
+    // X-axis endpoint labels
+    const fmtOmega = v => Math.abs(v) < 0.001 ? v.toExponential(2)
+                        : Math.abs(v) < 1      ? v.toFixed(4)
+                        : v.toFixed(2);
+    ctx.textAlign = "left";  ctx.fillText(fmtOmega(omega_min), box.l + 2, box.t + ph + 18);
+    ctx.textAlign = "center"; ctx.fillText("0", box.l + pw/2, box.t + ph + 18);
+    ctx.textAlign = "right";  ctx.fillText(fmtOmega(omega_max), box.l + pw, box.t + ph + 18);
+
+    // Y-axis ticks
+    ctx.textAlign = "right";
+    [[0,"0"],[0.5,"0.5"],[1,"1"]].forEach(([v, label]) => {
+      const y = box.t + ph * (1 - v);
+      ctx.fillText(label, box.l - 3, y + 3);
+      ctx.strokeStyle = "#1f3d5c"; ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(box.l - 3, y); ctx.lineTo(box.l, y); ctx.stroke();
+    });
+    return;
+  }
+
+  // ---- Lambda tick marks (non-Sagnac) ----
   ctx.strokeStyle = "#f5c54240"; ctx.lineWidth = 0.8;
   for (let i = -4; i <= 4; i++) {
     const t = 0.5 + (i / 8);
     const x = box.l + t * pw;
     ctx.beginPath(); ctx.moveTo(x, box.t + ph); ctx.lineTo(x, box.t + ph + 5); ctx.stroke();
   }
-
-  const N = 320;
-  const gamma = inp.coherence / 100;
-  const phaseOffset = inp.phaseOffset * Math.PI / 180;
 
   if (currentInstrument === "fabryPerot") {
     const R = inp.reflectivity / 100;
@@ -1131,6 +1577,9 @@ function render() {
   $("reflectivityOut").textContent = `${inp.reflectivity.toFixed(1)}%`;
   $("rotationRateOut").textContent = `${inp.rotationRate.toFixed(1)}°/s`;
   $("tiltAngleOut").textContent = `${inp.tiltAngle.toFixed(2)} mrad`;
+  $("fiberTurnsOut").textContent = `${inp.fiberTurns.toFixed(0)} turns`;
+  const fovUnit = currentInstrument === "fabryPerot" ? "mrad" : "mm";
+  $("fringeApertureOut").textContent = `${Number($("fringeAperture").value).toFixed(1)} ${fovUnit}`;
 
   // OPD display
   $("opdHeading").textContent = cfg.opdHeading;
@@ -1162,7 +1611,9 @@ function render() {
   // Derived quantities
   $("phaseDiff").textContent = formatPhase(model.phase);
   $("intensityFormula").innerHTML = `${model.intensity.toFixed(4)} = ½[1 + ${model.gamma.toFixed(3)}·cos(${(model.phase/Math.PI).toFixed(3)}π)]`;
-  $("fringeOrder").textContent = `m = ${model.fringeOrder.toFixed(3)}  (fractional: ${(model.fringeOrder % 1).toFixed(4)})`;
+  if (currentInstrument !== "sagnac") {
+    $("fringeOrder").textContent = `m = ${model.fringeOrder.toFixed(3)}  (fractional: ${(model.fringeOrder % 1).toFixed(4)})`;
+  }
   $("visibility").textContent = `V = ${(model.visibility * 100).toFixed(2)}%`;
 
   // Coherence length: ℓ_c ≈ λ² / Δλ; model as ℓ_c = λ / (1 - γ + 1e-9) for UI feedback
@@ -1177,11 +1628,16 @@ function render() {
   // FP-specific
   if (currentInstrument === "fabryPerot" && model.finesse !== undefined) {
     $("finesses").textContent = `ℱ = ${model.finesse.toFixed(2)}`;
-    $("fsr").textContent = `${model.fsr.toFixed(4)} nm  (${(model.fsr * 1e-3 / inp.wavelength * 3e8).toExponential(3)} Hz approx)`;
+    const fsrHz = (model.fsr / (inp.wavelength * 1e-9)) * 3e8 / (inp.wavelength * 1e-9) * (model.fsr * 1e-9);
+    $("fsr").textContent = `${model.fsr.toFixed(4)} nm`;
   }
   // Sagnac-specific
   if (currentInstrument === "sagnac" && model.sagnacPhase !== undefined) {
     $("sagnacPhase").textContent = `${formatPhase(model.sagnacPhase)}`;
+    if ($("sagnacSF")) {
+      const sf_mrad_per_degs = model.dPhidOmega * 1000;
+      $("sagnacSF").textContent = `${model.dPhidOmega.toFixed(4)} rad/(°/s)  =  ${sf_mrad_per_degs.toFixed(2)} mrad/(°/s)`;
+    }
   }
 
   // Physical model HTML
@@ -1215,6 +1671,10 @@ $("reset").addEventListener("click", () => {
   controls.rotationRateInput.value = DEFAULTS.rotationRate;
   controls.tiltAngle.value      = DEFAULTS.tiltAngle;
   controls.tiltAngleInput.value = DEFAULTS.tiltAngle;
+  controls.fiberTurns.value      = DEFAULTS.fiberTurns;
+  controls.fiberTurnsInput.value = DEFAULTS.fiberTurns;
+  // Re-apply per-instrument arm defaults (e.g. Sagnac 5 cm radius)
+  applyArmDefaults(currentInstrument);
   sourcePreset.value = "hene";
   $("sourcePresetBadge").textContent = SOURCE_PRESETS.hene.label;
   render();
