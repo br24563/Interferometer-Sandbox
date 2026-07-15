@@ -3,85 +3,196 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="A professional-grade, interactive Michelson interferometer simulator with precise optical path control.">
-  <title>Professional Michelson Interferometer Lab</title>
+  <meta name="description" content="Professional optical-engineering interferometer lab simulator covering Michelson, Mach–Zehnder, Fabry–Pérot, and Sagnac configurations with rigorous physics models.">
+  <title>Interferometer Lab — Optical Engineering Simulator</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <main class="page-shell">
+
+    <!-- ===== Header ===== -->
     <header class="hero">
-      <div>
-        <p class="eyebrow">Physics Simulation</p>
-        <h1>Michelson Interferometer Lab</h1>
-        <p class="intro">A rigorous optical-path interferometer model with selectable arm units and real-time interference analysis.</p>
+      <div class="hero-text">
+        <p class="eyebrow">Optical Engineering · Wave Optics</p>
+        <h1>Interferometer Lab</h1>
+        <p class="intro">Professional-grade simulator covering four canonical interferometer configurations. All physics models are grounded in first-principles wave optics.</p>
       </div>
-      <span class="badge">Professional Grade • No dependencies</span>
+      <div class="hero-meta">
+        <span class="badge">4 instruments · No dependencies</span>
+        <span class="badge badge-secondary" id="sourcePresetBadge">He-Ne 632.8 nm</span>
+      </div>
     </header>
 
+    <!-- ===== Instrument Tabs ===== -->
+    <nav class="instrument-tabs" role="tablist" aria-label="Interferometer selection">
+      <button class="tab active" role="tab" data-instrument="michelson" aria-selected="true" id="tab-michelson">
+        <span class="tab-name">Michelson</span>
+        <span class="tab-sub">Round-trip · Mirror scan</span>
+      </button>
+      <button class="tab" role="tab" data-instrument="machZehnder" aria-selected="false" id="tab-machZehnder">
+        <span class="tab-name">Mach–Zehnder</span>
+        <span class="tab-sub">Single-pass · Transmission</span>
+      </button>
+      <button class="tab" role="tab" data-instrument="fabryPerot" aria-selected="false" id="tab-fabryPerot">
+        <span class="tab-name">Fabry–Pérot</span>
+        <span class="tab-sub">Etalon · High finesse</span>
+      </button>
+      <button class="tab" role="tab" data-instrument="sagnac" aria-selected="false" id="tab-sagnac">
+        <span class="tab-name">Sagnac</span>
+        <span class="tab-sub">Ring · Rotation sensing</span>
+      </button>
+    </nav>
+
+    <!-- ===== Main Lab Grid ===== -->
     <section class="lab-grid" aria-label="Interactive interferometer lab">
-      <aside class="card controls-panel">
+
+      <!-- ===== Controls Panel ===== -->
+      <aside class="card controls-panel" aria-label="Control panel">
         <h2>Optical Setup</h2>
-        <div class="control">
-          <div class="control-label"><label for="instrumentMode">Instrument</label></div>
-          <select id="instrumentMode" class="numeric-input" aria-label="Interferometer type">
-            <option value="michelson">Michelson interferometer</option>
-            <option value="machZehnder">Mach–Zehnder interferometer</option>
-          </select>
-          <div class="fine-print" id="modeDescription">Michelson mode uses a round-trip path difference.</div>
-        </div>
-        
-        <!-- Wavelength Control -->
+
+        <!-- Instrument description -->
+        <div class="instrument-desc fine-print" id="instrumentDesc"></div>
+
+        <!-- Light Source -->
         <div class="control-group">
           <h3>Light Source</h3>
+
+          <!-- Source presets -->
+          <div class="control">
+            <div class="control-label"><label for="sourcePreset">Source preset</label></div>
+            <select id="sourcePreset" class="select-input" aria-label="Source preset">
+              <option value="hene">He-Ne laser — 632.8 nm</option>
+              <option value="ndyag">Nd:YAG (2ω) — 532.0 nm</option>
+              <option value="sodium">Sodium D — 589.3 nm</option>
+              <option value="ar488">Ar⁺ laser — 488.0 nm</option>
+              <option value="ar514">Ar⁺ laser — 514.5 nm</option>
+              <option value="diode780">Diode laser — 780.0 nm</option>
+              <option value="custom">Custom…</option>
+            </select>
+          </div>
+
           <div class="control">
             <div class="control-label">
-              <label for="wavelength">Vacuum wavelength</label>
+              <label for="wavelength">Vacuum wavelength (λ)</label>
               <output id="wavelengthOut"></output>
             </div>
             <div class="input-row">
-              <input id="wavelength" type="range" min="380" max="740" value="532" step="0.1" aria-label="Wavelength slider">
-              <input id="wavelengthInput" type="number" min="380" max="740" value="532" step="0.1" class="numeric-input" aria-label="Wavelength numeric input">
+              <input id="wavelength" type="range" min="380" max="780" value="632.8" step="0.1" aria-label="Wavelength slider">
+              <input id="wavelengthInput" type="number" min="380" max="780" value="632.8" step="0.1" class="numeric-input" aria-label="Wavelength numeric input">
               <span class="unit">nm</span>
             </div>
+          </div>
+
+          <div class="control">
+            <div class="control-label">
+              <label for="coherence">Coherence γ</label>
+              <output id="coherenceOut"></output>
+            </div>
+            <div class="input-row">
+              <input id="coherence" type="range" min="0" max="100" value="100" step="0.5" aria-label="Coherence slider">
+              <input id="coherenceInput" type="number" min="0" max="100" value="100" step="0.1" class="numeric-input" aria-label="Coherence input">
+              <span class="unit">%</span>
+            </div>
+            <div class="fine-print">Temporal coherence / fringe visibility. 100% = ideal monochromatic laser.</div>
           </div>
         </div>
 
-        <!-- Arm Length Controls -->
+        <!-- Arm / Cavity Controls -->
         <div class="control-group">
-          <h3>Interferometer Arms</h3>
-          <div class="control-label"><label for="lengthUnit">Arm input units</label></div>
-          <select id="lengthUnit" class="numeric-input" aria-label="Arm-length units"><option value="nm">nanometres (nm)</option><option value="um">micrometres (µm)</option><option value="mm">millimetres (mm)</option></select>
-          
+          <h3 id="armGroupTitle">Interferometer Arms</h3>
+          <div class="control">
+            <div class="control-label"><label for="lengthUnit">Length units</label></div>
+            <select id="lengthUnit" class="select-input" aria-label="Arm-length units">
+              <option value="nm">nanometres (nm)</option>
+              <option value="um">micrometres (µm)</option>
+              <option value="mm">millimetres (mm)</option>
+            </select>
+          </div>
+
           <div class="control">
             <div class="control-label">
-              <label for="armA">Arm A length</label>
+              <label for="armA" id="armALabel">Arm A length</label>
               <output id="armAOut"></output>
             </div>
             <div class="input-row">
-              <input id="armA" type="range" min="0" max="100000" value="50000" step="0.001" aria-label="Arm A length slider">
-              <input id="armAInput" type="number" min="0" max="100000" value="50000" step="0.001" class="numeric-input" aria-label="Arm A length numeric input">
-              <span class="unit">nm</span>
+              <input id="armA" type="range" min="0" max="100000" value="50000" step="0.001" aria-label="Arm A slider">
+              <input id="armAInput" type="number" min="0" max="100000" value="50000" step="0.001" class="numeric-input" aria-label="Arm A input">
+              <span class="unit" id="armAUnit">nm</span>
             </div>
-            <div class="fine-print" style="margin-top: 4px;">Geometric path length; choose nm, µm, or mm above. The physical limit is 100,000 nm.</div>
           </div>
 
-          <div class="control">
+          <div class="control" id="armBControl">
             <div class="control-label">
-              <label for="armB">Arm B length</label>
+              <label for="armB" id="armBLabel">Arm B length</label>
               <output id="armBOut"></output>
             </div>
             <div class="input-row">
-              <input id="armB" type="range" min="0" max="100000" value="50000.5" step="0.001" aria-label="Arm B length slider">
-              <input id="armBInput" type="number" min="0" max="100000" value="50000.5" step="0.001" class="numeric-input" aria-label="Arm B length numeric input">
-              <span class="unit">nm</span>
+              <input id="armB" type="range" min="0" max="100000" value="50000.5" step="0.001" aria-label="Arm B slider">
+              <input id="armBInput" type="number" min="0" max="100000" value="50000.5" step="0.001" class="numeric-input" aria-label="Arm B input">
+              <span class="unit" id="armBUnit">nm</span>
             </div>
-            <div class="fine-print" style="margin-top: 4px;">Geometric path length; choose nm, µm, or mm above. The physical limit is 100,000 nm.</div>
           </div>
 
+          <!-- Refractive index (for MZI sample arm / FP medium) -->
+          <div class="control" id="refractiveControl">
+            <div class="control-label">
+              <label for="refractiveIndex" id="refractiveLabel">Medium refractive index (n)</label>
+              <output id="refractiveIndexOut"></output>
+            </div>
+            <div class="input-row">
+              <input id="refractiveIndex" type="range" min="1.0" max="3.0" value="1.0" step="0.001" aria-label="Refractive index slider">
+              <input id="refractiveIndexInput" type="number" min="1.0" max="3.0" value="1.0" step="0.001" class="numeric-input" aria-label="Refractive index input">
+              <span class="unit">—</span>
+            </div>
+            <div class="fine-print" id="refractiveNote">Optical path = geometric path × n. Insert a sample in arm B to shift the OPD.</div>
+          </div>
+
+          <!-- Fabry-Pérot specific controls -->
+          <div class="control" id="reflectivityControl" style="display:none;">
+            <div class="control-label">
+              <label for="reflectivity">Mirror reflectivity (R)</label>
+              <output id="reflectivityOut"></output>
+            </div>
+            <div class="input-row">
+              <input id="reflectivity" type="range" min="0" max="99" value="90" step="0.1" aria-label="Reflectivity slider">
+              <input id="reflectivityInput" type="number" min="0" max="99" value="90" step="0.1" class="numeric-input" aria-label="Reflectivity input">
+              <span class="unit">%</span>
+            </div>
+          </div>
+
+          <!-- Sagnac specific controls -->
+          <div class="control" id="rotationControl" style="display:none;">
+            <div class="control-label">
+              <label for="rotationRate">Rotation rate (Ω)</label>
+              <output id="rotationRateOut"></output>
+            </div>
+            <div class="input-row">
+              <input id="rotationRate" type="range" min="-1000" max="1000" value="0" step="0.1" aria-label="Rotation rate slider">
+              <input id="rotationRateInput" type="number" min="-1000" max="1000" value="0" step="0.1" class="numeric-input" aria-label="Rotation rate input">
+              <span class="unit">°/s</span>
+            </div>
+            <div class="fine-print">Sagnac OPD = 4AΩ/c · (λ per revolution).</div>
+          </div>
+
+          <!-- Tilt angle (fringe pattern spacing) -->
+          <div class="control" id="tiltControl">
+            <div class="control-label">
+              <label for="tiltAngle">Mirror tilt / wedge (θ)</label>
+              <output id="tiltAngleOut"></output>
+            </div>
+            <div class="input-row">
+              <input id="tiltAngle" type="range" min="0" max="30" value="0" step="0.01" aria-label="Tilt angle slider">
+              <input id="tiltAngleInput" type="number" min="0" max="30" value="0" step="0.01" class="numeric-input" aria-label="Tilt angle input">
+              <span class="unit">mrad</span>
+            </div>
+            <div class="fine-print">Introduces spatial fringe modulation. Fringe spacing Λ = λ / (2θ) in the fringe pattern view.</div>
+          </div>
+
+          <!-- OPD read-out -->
           <div class="opd-display">
             <strong id="opdHeading">Optical Path Difference:</strong>
-            <span id="opdDisplay">1.000 nm</span>
-            <div class="fine-print" id="opdDefinition" style="margin-top: 4px;">Δ = 2(L<sub>B</sub> − L<sub>A</sub>)</div>
+            <span id="opdDisplay">—</span>
+            <div class="fine-print" id="opdDefinition"></div>
           </div>
         </div>
 
@@ -90,143 +201,174 @@
           <h3>Phase Adjustment</h3>
           <div class="control">
             <div class="control-label">
-              <label for="phaseOffset">Electronic phase offset</label>
+              <label for="phaseOffset">Electronic phase offset (φ₀)</label>
               <output id="phaseOffsetOut"></output>
             </div>
             <div class="input-row">
               <input id="phaseOffset" type="range" min="0" max="360" value="0" step="0.1" aria-label="Phase offset slider">
-              <input id="phaseOffsetInput" type="number" min="0" max="360" value="0" step="0.1" class="numeric-input" aria-label="Phase offset numeric input">
+              <input id="phaseOffsetInput" type="number" min="0" max="360" value="0" step="0.1" class="numeric-input" aria-label="Phase offset input">
               <span class="unit">°</span>
             </div>
           </div>
         </div>
 
-        <!-- Coherence Control -->
-        <div class="control-group">
-          <h3>Source Coherence</h3>
-          <div class="control">
-            <div class="control-label">
-              <label for="coherence">Coherence degree (γ)</label>
-              <output id="coherenceOut"></output>
-            </div>
-            <div class="input-row">
-              <input id="coherence" type="range" min="0" max="100" value="100" step="0.5" aria-label="Coherence slider">
-              <input id="coherenceInput" type="number" min="0" max="100" value="100" step="0.1" class="numeric-input" aria-label="Coherence numeric input">
-              <span class="unit">%</span>
-            </div>
-            <div class="coherence-info">
-              <p class="fine-print">Describes temporal coherence and fringe visibility. At 100%, perfect monochromatic laser. Lower values simulate finite linewidth.</p>
-              <div class="coherence-indicator" id="coherenceIndicator">
-                <div class="coherence-bar"></div>
-              </div>
-            </div>
-          </div>
+        <!-- Action Buttons -->
+        <div class="button-group">
+          <button class="button button-primary" id="reset">Reset Defaults</button>
+          <button class="button" id="quarterWave">+λ/4 on Arm B</button>
+          <button class="button" id="halfWave">+λ/2 on Arm B</button>
         </div>
 
-        <!-- Control Buttons -->
-        <div class="button-row">
-          <button class="button button-primary" id="reset">Reset to Defaults</button>
-          <button class="button" id="quarterWave">Move B by +λ/4</button>
-        </div>
+      </aside><!-- /controls-panel -->
 
-        <p class="fine-print" style="margin-top: 16px;">
-          The path-difference definition changes with the selected instrument; see the live OPD panel above.
-        </p>
-      </aside>
-
+      <!-- ===== Visual Column ===== -->
       <div class="visual-column">
-        <!-- Optical Diagram -->
-        <section class="card diagram-card">
-          <h2>Optical Setup</h2>
-          <canvas id="diagram" aria-label="Michelson interferometer optical diagram with animated arms"></canvas>
-        </section>
 
-        <!-- Results Grid -->
+        <!-- Optical Diagram + Fringe Pattern (side by side) -->
+        <div class="canvas-row">
+          <section class="card diagram-card">
+            <div class="card-header">
+              <h2>Optical Diagram</h2>
+              <span class="card-badge" id="instrumentBadge">Michelson</span>
+            </div>
+            <canvas id="diagram" aria-label="Interferometer optical diagram"></canvas>
+          </section>
+
+          <section class="card fringe-card">
+            <div class="card-header">
+              <h2>Fringe Pattern</h2>
+              <span class="card-badge" id="fringeModeBadge">Circular</span>
+            </div>
+            <canvas id="fringeCanvas" aria-label="Simulated interference fringe pattern"></canvas>
+          </section>
+        </div>
+
+        <!-- Intensity + OPD Plot -->
         <div class="results-grid">
-          <!-- Intensity Reading -->
           <section class="card reading-card">
             <h2>Detector Signal</h2>
-            <div class="intensity-reading" id="intensity"></div>
-            <p id="interferenceState"></p>
+            <div class="intensity-reading" id="intensity">—</div>
+            <p id="interferenceState" class="interference-state"></p>
             <div class="intensity-details">
-              <span>Min: <strong id="intensityMin">0.00</strong></span>
-              <span>Max: <strong id="intensityMax">1.00</strong></span>
-              <span>Contrast: <strong id="contrast">100%</strong></span>
+              <span class="detail-item"><span class="detail-label">Min</span><strong id="intensityMin">—</strong></span>
+              <span class="detail-item"><span class="detail-label">Max</span><strong id="intensityMax">—</strong></span>
+              <span class="detail-item"><span class="detail-label">Visibility</span><strong id="contrast">—</strong></span>
+            </div>
+            <!-- Coherence bar -->
+            <div class="coherence-row">
+              <span class="fine-print">Coherence</span>
+              <div class="coherence-track"><div class="coherence-fill" id="coherenceFill"></div></div>
             </div>
           </section>
 
-          <!-- Intensity vs OPD Plot -->
           <section class="card plot-card">
             <h2>Intensity vs OPD</h2>
-            <canvas id="plot" aria-label="Detector intensity versus optical path difference"></canvas>
+            <canvas id="plot" aria-label="Intensity versus optical path difference plot"></canvas>
             <div class="legend">
-              <span><i class="legend-dot cyan"></i> Current intensity</span>
-              <span><i class="legend-dot gold"></i> Wavelength scale</span>
+              <span><i class="legend-dot ld-cyan"></i>Detector I(OPD)</span>
+              <span><i class="legend-dot ld-gold"></i>λ markers</span>
+              <span id="airyLegend" style="display:none;"><i class="legend-dot ld-orange"></i>Airy function</span>
             </div>
           </section>
         </div>
-      </div>
-    </section>
 
-    <!-- Derived Quantities and Model -->
-    <section class="derived-section" aria-label="Derived values and model equation">
+      </div><!-- /visual-column -->
+    </section><!-- /lab-grid -->
+
+    <!-- ===== Derived Quantities ===== -->
+    <section class="derived-section" aria-label="Derived values">
       <article class="card derived-card">
         <h2>Derived Quantities</h2>
         <dl class="metrics">
           <div>
             <dt>Phase difference (φ)</dt>
-            <dd id="phaseDiff"></dd>
+            <dd id="phaseDiff">—</dd>
           </div>
           <div>
-            <dt>Normalized intensity</dt>
-            <dd id="intensityFormula"></dd>
+            <dt>Intensity I/I₀</dt>
+            <dd id="intensityFormula">—</dd>
           </div>
           <div>
             <dt>Fringe order (m)</dt>
-            <dd id="fringeOrder"></dd>
+            <dd id="fringeOrder">—</dd>
           </div>
           <div>
-            <dt>Visibility (V)</dt>
-            <dd id="visibility"></dd>
+            <dt>Visibility / Contrast (V)</dt>
+            <dd id="visibility">—</dd>
+          </div>
+          <div>
+            <dt>Coherence length (ℓ_c)</dt>
+            <dd id="coherenceLength">—</dd>
           </div>
           <div>
             <dt>Spectrum color</dt>
-            <dd id="spectrumColor" style="display: inline-block; width: 24px; height: 24px; border-radius: 4px; vertical-align: middle; border: 1px solid var(--muted);"></dd>
+            <dd><span id="spectrumColor" class="spectrum-swatch"></span><span id="spectrumLabel" class="spectrum-label"></span></dd>
+          </div>
+          <!-- FP only -->
+          <div id="fpRow" style="display:none;">
+            <dt>Finesse (ℱ)</dt>
+            <dd id="finesses">—</dd>
+          </div>
+          <div id="fsrRow" style="display:none;">
+            <dt>Free Spectral Range (FSR)</dt>
+            <dd id="fsr">—</dd>
+          </div>
+          <!-- Sagnac only -->
+          <div id="sagnacRow" style="display:none;">
+            <dt>Sagnac phase shift</dt>
+            <dd id="sagnacPhase">—</dd>
           </div>
         </dl>
       </article>
 
       <article class="card equation-card">
         <h2>Physical Model</h2>
-        <div class="model-description">
-          <p>For equal beam intensities with coherence factor γ:</p>
-          <p class="equation">I/(I<sub>A</sub> + I<sub>B</sub>) = <strong>½[1 + γ cos(φ)]</strong></p>
-          <p>Where:</p>
-          <ul>
-            <li><strong>φ = 2π(OPD)/λ + φ₀</strong> — phase difference in radians</li>
-            <li><strong>OPD</strong> — uses the selected instrument’s signed path-difference definition</li>
-            <li><strong>γ ∈ [0,1]</strong> — degree of coherence (temporal coherence)</li>
-            <li><strong>I<sub>A</sub> + I<sub>B</sub></strong> — sum of the individual returning beam intensities (assumed equal)</li>
-          </ul>
-          <p class="fine-print">At γ = 1 (perfect coherence), fringes have maximum visibility. As γ decreases, fringe contrast reduces and eventually disappears. This models a finite spectral l[...]
+        <div id="modelDescription" class="model-description"></div>
+      </article>
+    </section>
+
+    <!-- ===== Reference / Tips ===== -->
+    <section class="tips-section">
+      <article class="card tips-card">
+        <h2>Lab Reference</h2>
+        <div class="tips-grid">
+          <div>
+            <h4>Michelson</h4>
+            <ul>
+              <li>Light travels to each mirror and returns — OPD = 2(L<sub>B</sub> − L<sub>A</sub>).</li>
+              <li>λ/2 mirror scan = one complete fringe cycle (Δφ = 2π).</li>
+              <li>Fringe visibility directly equals γ (coherence degree).</li>
+            </ul>
+          </div>
+          <div>
+            <h4>Mach–Zehnder</h4>
+            <ul>
+              <li>Light traverses each arm once — OPD = n·L<sub>B</sub> − L<sub>A</sub>.</li>
+              <li>Insert a sample in arm B: Δn × L gives the OPD shift.</li>
+              <li>Commonly used in flow visualization and integrated optics.</li>
+            </ul>
+          </div>
+          <div>
+            <h4>Fabry–Pérot</h4>
+            <ul>
+              <li>Multiple reflections produce narrow Airy-function resonances.</li>
+              <li>Finesse ℱ = π√R / (1 − R); resolving power = m × ℱ.</li>
+              <li>Free Spectral Range FSR = λ² / (2nL).</li>
+            </ul>
+          </div>
+          <div>
+            <h4>Sagnac</h4>
+            <ul>
+              <li>Counter-propagating beams sense rotation via OPD = 4AΩ/c.</li>
+              <li>Encircled area A and rotation rate Ω determine sensitivity.</li>
+              <li>Fibre-optic gyroscopes use many wound loops to amplify A.</li>
+            </ul>
+          </div>
         </div>
       </article>
     </section>
 
-    <section class="tips-section">
-      <article class="card">
-        <h2>Measurement Tips</h2>
-        <ul style="margin: 0; padding-left: 20px;">
-          <li>Use <strong>numeric inputs</strong> for precise picometer-scale adjustments; use <strong>sliders</strong> for rapid exploration.</li>
-          <li>Use the unit selector to enter arm lengths in nm, µm, or mm; all arm displays update together.</li>
-          <li>Adjust coherence to see how fringe contrast degrades with realistic light sources.</li>
-          <li>In Michelson mode, moving mirror B by λ/4 changes the round-trip phase by π, taking a bright fringe to a dark fringe. A λ/2 move completes one 2π fringe cycle.</li>
-          <li>At constructive interference (phase ≈ 0, 2π, …), intensity is maximum; at destructive interference (phase ≈ π, 3π, …), it is zero.</li>
-          <li>The <strong>Visibility</strong> is the ratio of (I<sub>max</sub> − I<sub>min</sub>) / (I<sub>max</sub> + I<sub>min</sub>), capped by coherence.</li>
-        </ul>
-      </article>
-    </section>
-  </main>
+  </main><!-- /page-shell -->
 
   <script src="app.js"></script>
 </body>
