@@ -28,10 +28,10 @@ A rigorous, browser-based simulation of a Michelson interferometer with precise 
 - **Visibility V = γ**: mathematically defined as (I_max − I_min) / (I_max + I_min)
 
 ### ✓ Real-Time Derived Quantities
-- **Optical Path Difference (OPD):** 2|L_B − L_A| µm
+- **Optical Path Difference (OPD):** Michelson: `2(L_B − L_A)`; Mach–Zehnder: `L_B − L_A`.
 - **Phase difference:** 2π(OPD)/λ + φ₀ (displayed in degrees and radians)
 - **Fringe order:** number of wavelengths in the OPD
-- **Normalized intensity:** I/I_max = ½[1 + γ cos(φ)]
+- **Normalized intensity:** `I/(I_A + I_B) = ½[1 + γ cos(φ)]` for equal beam intensities.
 - **Interference state:** "Constructive," "Destructive," or "Partial"
 
 ### ✓ Dual Visualizations
@@ -48,12 +48,12 @@ A rigorous, browser-based simulation of a Michelson interferometer with precise 
 
 ### Normalized Intensity (Equal Beams)
 ```
-I/Imax = ½[1 + γ cos(φ)]
+I/(I_A + I_B) = ½[1 + γ cos(φ)]
 ```
 
 Where:
 - **φ = 2π(OPD)/λ + φ₀** — total phase difference in radians
-- **OPD = 2|L_B − L_A|** — round-trip optical path difference (both forward and return travel)
+- **OPD = 2(L_B − L_A)** in Michelson mode; **OPD = L_B − L_A** in Mach–Zehnder mode.
 - **γ ∈ [0, 1]** — degree of coherence (temporal coherence factor)
 - **λ** — vacuum wavelength in the same units as OPD
 

@@ -1,8 +1,7 @@
 "use strict";
 
 // Professional Michelson Interferometer Lab
-// All distance values in picometres (pm); wavelengths in nanometres (nm).
-// Using pm for arm lengths gives picometer precision (1 pm = 10^-12 m).
+// Internal arm lengths are nanometres; the interface can display nm, µm, or mm.
 
 const $ = (id) => document.getElementById(id);
 const controls = {
@@ -20,8 +19,8 @@ const controls = {
 
 const defaults = {
   wavelength: 532,
-  armA: 100,
-  armB: 100.5,
+  armA: 50000,
+  armB: 50000.5,
   phaseOffset: 0,
   coherence: 100
 };
@@ -30,17 +29,28 @@ const TAU = 2 * Math.PI;
 const instrumentMode = $("instrumentMode");
 const lengthUnit = $("lengthUnit");
 const unitScale = { nm: 1, um: 1000, mm: 1000000 };
+const MAX_ARM_NM = 100000;
+const unitSymbol = () => lengthUnit.value === "um" ? "µm" : lengthUnit.value;
+const displayLength = (nm, digits = 3) => `${(nm / unitScale[lengthUnit.value]).toFixed(digits)} ${unitSymbol()}`;
 let activeLengthUnit = "nm";
-lengthUnit.addEventListener("change", () => {
-  const oldScale = unitScale[activeLengthUnit], scale = unitScale[lengthUnit.value];
+function setArmUnit(nextUnit) {
+  const oldScale = unitScale[activeLengthUnit], scale = unitScale[nextUnit];
   [controls.armA, controls.armB].forEach((slider) => {
-    slider.value = Number(slider.value) * oldScale / scale;
-    slider.max = 5000 / scale; slider.step = 0.001 / scale;
-    $(slider.id + "Input").value = slider.value;
-    $(slider.id + "Input").max = slider.max; $(slider.id + "Input").step = slider.step;
+    // Capture the physical length before changing constraints. Setting a value
+    // above the *old* max would otherwise cause HTML to clamp it prematurely.
+    const physicalNm = Number(slider.value) * oldScale;
+    slider.max = MAX_ARM_NM / scale; slider.step = 0.001 / scale;
+    const number = $(slider.id + "Input");
+    number.max = slider.max; number.step = slider.step;
+    slider.value = physicalNm / scale;
+    number.value = slider.value;
+    slider.closest(".input-row").querySelector(".unit").textContent = nextUnit === "um" ? "µm" : nextUnit;
   });
-  activeLengthUnit = lengthUnit.value;
+  activeLengthUnit = nextUnit;
   render();
+}
+lengthUnit.addEventListener("change", () => {
+  setArmUnit(lengthUnit.value);
 });
 const MIN_WAVELENGTH = 380;
 const MAX_WAVELENGTH = 740;
@@ -50,11 +60,11 @@ const MAX_WAVELENGTH = 740;
 
 function syncFromSlider(sliderId, inputId) {
   const value = Number($(sliderId).value);
-  $(inputId).value = value; // Display directly in pm (integer)
+  $(inputId).value = value; // Display in the currently selected arm unit.
 }
 
 function syncFromInput(inputId, sliderId) {
-  let value = Number($(inputId).value); // Already in pm
+  let value = Number($(inputId).value); // Already in the selected display unit.
   const slider = $(sliderId);
   
   // Clamp to slider range
@@ -63,7 +73,7 @@ function syncFromInput(inputId, sliderId) {
   value = Math.max(min, Math.min(max, value));
   
   $(sliderId).value = value;
-  $(inputId).value = value; // Display as integer pm
+  $(inputId).value = value;
 }
 
 // Set up two-way sync for each control pair
@@ -155,7 +165,7 @@ function physics(input) {
   const offset = input.phaseOffset * Math.PI / 180;
   const phase = TAU * (opd / lambda) + offset;
   
-  // Normalized intensity for equal beams: I/Imax = [1 + γ cos(φ)] / 2
+  // Equal-beam intensity normalized to IA + IB: [1 + γ cos(φ)] / 2.
   const gamma = input.coherence / 100;
   const intensity = 0.5 * (1 + gamma * Math.cos(phase));
   
@@ -244,7 +254,7 @@ function drawDiagram(input, model, colour) {
   
   // ---- Arm A (vertical) ----
   const armALength = input.armA;
-  const maxArmLength = 5000;
+  const maxArmLength = MAX_ARM_NM;
   // Both arms use the same pixel-per-nanometre scale. The available canvas
   // travel is shared, so equal physical changes look equal in either arm.
   const sharedTravel = Math.min(beamY - mirrorAY - 20, mirrorX - splitX - 20);
@@ -265,7 +275,7 @@ function drawDiagram(input, model, colour) {
   ctx.font = "10px sans-serif";
   ctx.textAlign = "center";
   ctx.fillText(`M_A`, splitX, beamY - armAVisualLength - 10);
-  ctx.fillText(`${armALength.toFixed(3)} nm`, splitX, beamY - armAVisualLength + 15);
+  ctx.fillText(displayLength(armALength), splitX, beamY - armAVisualLength + 15);
   
   // ---- Arm B (horizontal) ----
   const armBLength = input.armB;
@@ -282,7 +292,7 @@ function drawDiagram(input, model, colour) {
   ctx.fillStyle = "#a1b8d0";
   ctx.textAlign = "center";
   ctx.fillText(`M_B`, splitX + armBVisualLength + 12, beamY - 8);
-  ctx.fillText(`${armBLength.toFixed(3)} nm`, splitX + armBVisualLength, beamY + 18);
+  ctx.fillText(displayLength(armBLength), splitX + armBVisualLength, beamY + 18);
   
   // ---- Recombined Beam ----
   const recombineX = splitX + armBVisualLength * 0.5;
@@ -308,7 +318,7 @@ function drawDiagram(input, model, colour) {
   ctx.fillStyle = "#58e6ff";
   ctx.font = "bold 12px monospace";
   ctx.textAlign = "left";
-  ctx.fillText(`OPD: ${model.opd.toFixed(3)} nm`, 12, 24);
+  ctx.fillText(`OPD: ${displayLength(model.opd)}`, 12, 24);
   ctx.fillText(`Phase: ${formatPhase(model.phase)}`, 12, 40);
   ctx.fillText(`λ: ${input.wavelength} nm`, 12, 56);
 }
@@ -326,9 +336,9 @@ function drawMachZehnderDiagram(input, model, colour) {
   // Recombination paths from the second beam splitter to two output ports.
   ctx.strokeStyle="#58e6ff"; ctx.beginPath(); ctx.moveTo(x2,upper); ctx.lineTo(x2,lower); ctx.stroke();
   [[x1,y,"BS1"],[x2,upper,"BS2"]].forEach(([x,yy,label])=>{ctx.strokeStyle="#d7eaff";ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(x-15,yy+15);ctx.lineTo(x+15,yy-15);ctx.stroke();ctx.fillStyle="#a1b8d0";ctx.font="11px monospace";ctx.fillText(label,x+18,yy-15);});
-  ctx.fillStyle=colour;ctx.beginPath();ctx.arc(w*.08,y,8,0,TAU);ctx.fill();ctx.fillStyle="#a1b8d0";ctx.font="11px sans-serif";ctx.fillText("Laser",w*.05,y+22);ctx.fillText(`Path A: ${input.armA.toFixed(3)} nm`,w*.40,upper-16);ctx.fillText(`Path B: ${input.armB.toFixed(3)} nm`,w*.40,lower+22);
+  ctx.fillStyle=colour;ctx.beginPath();ctx.arc(w*.08,y,8,0,TAU);ctx.fill();ctx.fillStyle="#a1b8d0";ctx.font="11px sans-serif";ctx.fillText("Laser",w*.05,y+22);ctx.fillText(`Path A: ${displayLength(input.armA)}`,w*.40,upper-16);ctx.fillText(`Path B: ${displayLength(input.armB)}`,w*.40,lower+22);
   ctx.strokeStyle="#d7eaff";ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(x1-15,upper+15);ctx.lineTo(x1+15,upper-15);ctx.moveTo(x2-15,y+15);ctx.lineTo(x2+15,y-15);ctx.stroke();ctx.fillStyle="#a1b8d0";ctx.fillText("M1",x1-26,upper-20);ctx.fillText("M2",x2+24,y+22);ctx.fillStyle="#ffd166";ctx.fillRect(w*.86-5,upper-34,10,68);ctx.fillStyle="#a1b8d0";ctx.fillText("screen",w*.86,upper+50);
-  ctx.fillStyle="#58e6ff";ctx.font="bold 12px monospace";ctx.fillText(`OPD: ${model.opd.toFixed(3)} nm`,12,24);ctx.fillText(`λ: ${input.wavelength} nm`,12,42);
+  ctx.fillStyle="#58e6ff";ctx.font="bold 12px monospace";ctx.fillText(`OPD: ${displayLength(model.opd)}`,12,24);ctx.fillText(`λ: ${input.wavelength} nm`,12,42);
 }
 
 // ==================== Plot Rendering ====================
@@ -431,7 +441,7 @@ function drawPlot(input, model, colour) {
   ctx.fillStyle = "#a1b8d0";
   ctx.font = "11px monospace";
   ctx.textAlign = "center";
-  ctx.fillText("OPD (nm)", w / 2, h - 4);
+  ctx.fillText(`OPD (${unitSymbol()})`, w / 2, h - 4);
   ctx.save();
   ctx.translate(12, h / 2);
   ctx.rotate(-Math.PI / 2);
@@ -468,17 +478,19 @@ function render() {
   document.querySelector('label[for="armA"]').textContent = isMachZehnder ? "Path A length" : "Arm A length";
   document.querySelector('label[for="armB"]').textContent = isMachZehnder ? "Path B length" : "Arm B length";
   $("modeDescription").textContent = isMachZehnder ? "Mach–Zehnder mode: light traverses each path once, so OPD = LB − LA." : "Michelson mode: light returns from each mirror, so OPD = 2(LB − LA).";
+  $("opdHeading").textContent = isMachZehnder ? "Optical Path Difference (single-pass):" : "Optical Path Difference (round-trip):";
+  $("opdDefinition").innerHTML = isMachZehnder ? "Δ = L<sub>B</sub> − L<sub>A</sub>" : "Δ = 2(L<sub>B</sub> − L<sub>A</sub>)";
+  $("quarterWave").textContent = isMachZehnder ? "Move B by +λ/4 (π/2 phase)" : "Move B by +λ/4 (π phase)";
   
   // Update slider outputs
   $("wavelengthOut").textContent = `${input.wavelength} nm`;
-  const scale = unitScale[lengthUnit.value];
   $("armAOut").textContent = `${Number(controls.armA.value).toFixed(3)} ${lengthUnit.value}`;
   $("armBOut").textContent = `${Number(controls.armB.value).toFixed(3)} ${lengthUnit.value}`;
   $("phaseOffsetOut").textContent = `${input.phaseOffset.toFixed(1)}°`;
   $("coherenceOut").textContent = `${input.coherence.toFixed(1)}%`;
   
   // Update derived quantities
-  $("opdDisplay").textContent = `${model.opd.toFixed(3)} nm`;
+  $("opdDisplay").textContent = displayLength(model.opd);
   $("phaseDiff").textContent = formatPhase(model.phase);
   $("fringeOrder").innerHTML = `${model.fringeOrder.toFixed(2)} (${(model.fringeOrder % 1).toFixed(3)} fringes)`;
   $("visibility").textContent = `${(model.visibility * 100).toFixed(1)}%`;
@@ -525,16 +537,16 @@ $("reset").addEventListener("click", () => {
     const sliderId = key.endsWith("Input") ? key.replace("Input", "") : key;
     const inputId = key.endsWith("Input") ? key : key + "Input";
     
-    if ($(sliderId)) $(sliderId).value = value;
-    if ($(inputId)) $(inputId).value = value; // Show in pm (integer)
+    const displayValue = (key === "armA" || key === "armB") ? value / unitScale[activeLengthUnit] : value;
+    if ($(sliderId)) $(sliderId).value = displayValue;
+    if ($(inputId)) $(inputId).value = displayValue;
   });
   render();
 });
 
 $("quarterWave").addEventListener("click", () => {
   const wavelength = Number(controls.wavelength.value);
-  const lambda = wavelengthMicrometres(wavelength);
-  const quarterWaveLength = lambda / 4 * 1000; // Convert to pm
+  const quarterWaveLength = wavelength / 4 / unitScale[lengthUnit.value];
   
   const currentArmB = Number(controls.armB.value);
   const newArmB = currentArmB + quarterWaveLength;
@@ -542,9 +554,9 @@ $("quarterWave").addEventListener("click", () => {
   const max = Number(controls.armB.max);
   if (newArmB <= max) {
     controls.armB.value = newArmB;
-    controls.armBInput.value = Math.round(newArmB);
+    controls.armBInput.value = newArmB.toFixed(6);
   } else {
-    alert(`Cannot move Arm B by λ/4 (${(quarterWaveLength).toFixed(2)} pm): would exceed maximum length.`);
+    alert(`Cannot move Arm B by λ/4 (${quarterWaveLength.toFixed(3)} ${unitSymbol()}): it would exceed the 100,000 nm physical range.`);
   }
   
   render();
