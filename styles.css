@@ -244,10 +244,20 @@ body {
 .instrument-desc {
   background: var(--panel-deep);
   border-left: 3px solid var(--violet);
-  padding: 10px 12px;
+  padding: 10px 14px;
   border-radius: var(--radius-sm);
   margin-bottom: 4px;
-  line-height: 1.5;
+  line-height: 1.55;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+/* Sub-label hint text beneath each control */
+.sublabel {
+  margin: 4px 0 0;
+  font-size: 0.74rem;
+  color: var(--muted-dim);
+  line-height: 1.45;
 }
 
 .control {

@@ -19,10 +19,12 @@ const INSTRUMENTS = {
     opdHeading: "OPD (round-trip):",
     armALabel: "Arm A — Mirror A length",
     armBLabel: "Arm B — Mirror B length",
+    armAHint: "Geometric path from beamsplitter to mirror A (one-way). In Michelson the light travels this path twice (round-trip).",
+    armBHint: "Geometric path from beamsplitter to mirror B (one-way). Scanning mirror B by λ/2 completes one full fringe cycle.",
     armGroup: "Interferometer Arms",
     fringeMode: "Circular",
     showRefractive: true,
-    refractiveNote: "n scales both arms equally. Use unequal n to model a sample plate.",
+    refractiveNote: "Refractive index n of any medium inserted in an arm (default 1.0 = air). Optical path = n × geometric path.",
     showArmB: true,
     showRotation: false,
     showReflectivity: false,
@@ -56,12 +58,14 @@ const INSTRUMENTS = {
     desc: "Two beamsplitters route the beam through two separated single-pass arms. The second BS recombines them. OPD = n·L_B − L_A. Widely used for phase-sensitive measurement in flows, plasmas and integrated optics.",
     opdDef: "Δ = n·L<sub>B</sub> − L<sub>A</sub>",
     opdHeading: "OPD (single-pass):",
-    armALabel: "Path A length",
+    armALabel: "Path A length (reference)",
     armBLabel: "Path B length (sample arm)",
+    armAHint: "Single-pass length of the reference arm. Light travels this distance once from BS1 to BS2 via mirror M1.",
+    armBHint: "Single-pass length of the sample arm. Insert a glass cell or flow channel here to add an optical path shift (n−1)×thickness.",
     armGroup: "Beam Paths",
     fringeMode: "Localized",
     showRefractive: true,
-    refractiveNote: "n applies to arm B (sample arm). Δn × L_B gives the extra OPD from inserting a sample.",
+    refractiveNote: "Refractive index n of a sample inserted in Path B only. Setting n > 1 models inserting glass (n≈1.5) or another transparent medium.",
     showArmB: true,
     showRotation: false,
     showReflectivity: false,
@@ -95,12 +99,14 @@ const INSTRUMENTS = {
     desc: "Two partially-reflective mirrors form a resonant cavity. Multiple reflections create narrow Airy-function transmission peaks. Finesse ℱ = π√R / (1−R) determines the sharpness of resonances.",
     opdDef: "Δ = 2nL (round-trip cavity)",
     opdHeading: "Round-trip OPD:",
-    armALabel: "Etalon spacing (L)",
+    armALabel: "Cavity / etalon spacing (L)",
     armBLabel: "— (not used)",
+    armAHint: "Distance between the two partially-reflective mirror surfaces. Resonance occurs when 2nL = mλ. Scanning L by λ/(2n) advances one fringe order.",
+    armBHint: "",
     armGroup: "Etalon / Cavity",
     fringeMode: "Ring (Haidinger)",
     showRefractive: true,
-    refractiveNote: "n is the refractive index of the medium filling the etalon cavity.",
+    refractiveNote: "Refractive index n of the material filling the cavity gap (air = 1.000, glass etalon ≈ 1.5). Affects both the resonance condition and FSR.",
     showArmB: false,
     showRotation: false,
     showReflectivity: true,
@@ -152,6 +158,8 @@ const INSTRUMENTS = {
     opdHeading: "Sagnac OPD:",
     armALabel: "Ring radius (r)",
     armBLabel: "— (not used)",
+    armAHint: "Radius of the circular ring path. The enclosed area A = πr². A larger ring area gives a greater Sagnac OPD per unit of rotation rate, improving sensitivity.",
+    armBHint: "",
     armGroup: "Ring Geometry",
     fringeMode: "Circular",
     showRefractive: false,
@@ -304,12 +312,16 @@ function updateInstrumentUI() {
   $("armALabel").textContent = cfg.armALabel;
   $("armBLabel").textContent = cfg.armBLabel;
 
+  // Update per-instrument arm hint text
+  if ($("armAHint")) $("armAHint").textContent = cfg.armAHint || "";
+  if ($("armBHint")) $("armBHint").textContent = cfg.armBHint || "";
+
   $("armBControl").style.display = cfg.showArmB ? "" : "none";
   $("refractiveControl").style.display = cfg.showRefractive ? "" : "none";
-  $("refractiveNote").textContent = cfg.refractiveNote;
+  if ($("refractiveNote")) $("refractiveNote").textContent = cfg.refractiveNote;
   $("reflectivityControl").style.display = cfg.showReflectivity ? "" : "none";
   $("rotationControl").style.display = cfg.showRotation ? "" : "none";
-  // Tilt always visible except Fabry-Pérot (ring fringes handled separately)
+  // Tilt always visible except Fabry-Pérot (Haidinger rings are angle-swept, not tilt-swept)
   $("tiltControl").style.display = currentInstrument === "fabryPerot" ? "none" : "";
 
   $("fpRow").style.display = currentInstrument === "fabryPerot" ? "" : "none";
@@ -353,16 +365,30 @@ SYNC_PAIRS.forEach(([slider, input]) => {
   $(input).addEventListener("blur",   () =>   syncFromInput(input, slider));
 });
 
-// Source preset
+// Source preset — also marks the wavelength input as "preset-locked" so
+// moving the slider switches it back to "custom" automatically.
 sourcePreset.addEventListener("change", () => {
   const p = SOURCE_PRESETS[sourcePreset.value];
   if (p && p.wavelength !== null) {
-    controls.wavelength.value = p.wavelength;
+    controls.wavelength.value      = p.wavelength;
     controls.wavelengthInput.value = p.wavelength;
     $("sourcePresetBadge").textContent = p.label;
     render();
+  } else if (sourcePreset.value === "custom") {
+    $("sourcePresetBadge").textContent = `Custom ${Number(controls.wavelength.value).toFixed(1)} nm`;
   }
 });
+
+// When the user manually moves the wavelength slider/input, switch preset to "custom"
+function markPresetCustom() {
+  if (sourcePreset.value !== "custom") {
+    sourcePreset.value = "custom";
+    $("sourcePresetBadge").textContent = `Custom ${Number(controls.wavelength.value).toFixed(1)} nm`;
+  }
+}
+controls.wavelength.addEventListener("input",      markPresetCustom);
+controls.wavelengthInput.addEventListener("input",  markPresetCustom);
+controls.wavelengthInput.addEventListener("change", markPresetCustom);
 
 // ==================== Read Inputs ====================
 
@@ -770,45 +796,94 @@ function drawSagnac(inp, model, colour) {
 }
 
 // ==================== Fringe Pattern ====================
+// All pixel loops operate in CSS-pixel space (w × h) which matches the
+// logical canvas dimensions returned by setupCanvas. imgData is created
+// at the physical (devicePixelRatio-scaled) canvas resolution but we
+// index using logical coords scaled by dpr for correct centring.
 
 function drawFringePattern(inp, model, colour) {
   const canvas = $("fringeCanvas");
-  const [ctx, w, h] = setupCanvas(canvas);
+  // We need both the physical canvas size (for ImageData) and the logical
+  // CSS-pixel size (for geometry maths). setupCanvas already scaled the ctx.
+  const dpr  = devicePixelRatio || 1;
+  const rect  = canvas.getBoundingClientRect();
+  const W = rect.width,  H = rect.height;   // logical CSS pixels
+  const PW = Math.round(W * dpr), PH = Math.round(H * dpr); // physical pixels
+
+  // Re-apply dimensions (setupCanvas may not have been called yet for this frame)
+  canvas.width  = PW;
+  canvas.height = PH;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(dpr, dpr);
 
   const gamma = model.gamma;
-  const tilt = inp.tiltAngle; // mrad
+  const tilt  = inp.tiltAngle; // mrad
 
   if (currentInstrument === "fabryPerot") {
-    // Haidinger rings: concentric circular fringes
-    drawHaidingerFringes(ctx, w, h, model, colour, gamma);
+    drawHaidingerFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma);
   } else if (tilt > 0.01) {
-    // Localized straight fringes from tilt/wedge
-    drawStraightFringes(ctx, w, h, model, colour, gamma, tilt, inp.wavelength);
+    drawStraightFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma, tilt, inp.wavelength);
   } else {
-    // Circular / "bull's-eye" fringes (Fizeau-like at zero tilt)
-    drawCircularFringes(ctx, w, h, model, colour, gamma);
+    drawCircularFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma);
   }
 }
 
-function drawCircularFringes(ctx, w, h, model, colour, gamma) {
-  const cx = w / 2, cy = h / 2;
-  const maxR = Math.min(w, h) * 0.48;
-  const imgData = ctx.createImageData(w, h);
-  const data = imgData.data;
-  const lambda = model.lambda;
+// ---- Shared ImageData helper ----
+// Returns an ImageData allocated at the physical pixel size, plus a setter
+// function that accepts logical (x,y) and intensity [0,1].
+function makeImgData(ctx, PW, PH, dpr, sr, sg, sb, bg = 0) {
+  const imgData = ctx.createImageData(PW, PH);
+  const data    = imgData.data;
+  // Fill background (dark)
+  for (let i = 0; i < PW * PH * 4; i += 4) {
+    data[i] = bg; data[i+1] = bg; data[i+2] = bg; data[i+3] = 255;
+  }
+  const set = (lx, ly, I) => {
+    const px = Math.round(lx * dpr), py = Math.round(ly * dpr);
+    if (px < 0 || py < 0 || px >= PW || py >= PH) return;
+    const idx = (py * PW + px) * 4;
+    data[idx]   = sr * I;
+    data[idx+1] = sg * I;
+    data[idx+2] = sb * I;
+    data[idx+3] = 255;
+  };
+  return { imgData, data, set };
+}
 
-  // Parse the spectrum colour to an RGB triple
+// ---- Circular / bull's-eye fringes (Michelson / MZI / Sagnac at tilt=0) ----
+// Physical model: equal-inclination fringes formed by a slightly diverging beam.
+// The fringe order at radius r is m(r) = m₀ + r²·k where k controls ring density.
+// We map the current fringe order m₀ = OPD/λ to set the central bright/dark state.
+function drawCircularFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma) {
+  const cx = W / 2, cy = H / 2;
+  const maxR = Math.min(W, H) * 0.46;
   const [sr, sg, sb] = parseColour(colour);
+  const { imgData, data } = makeImgData(ctx, PW, PH, dpr, sr, sg, sb);
 
-  // The central phase is model.phase. Radial fringes add extra path per ring order.
-  for (let py = 0; py < h; py++) {
-    for (let px = 0; px < w; px++) {
-      const r = Math.sqrt((px - cx) ** 2 + (py - cy) ** 2);
+  // Number of visible rings = how many complete fringe orders span the aperture.
+  // We fix ~5 rings across the aperture for a clean display regardless of OPD.
+  const ringsAcross = 5;
+  // At pixel r the extra OPD (in units of λ) relative to centre is r²·k
+  // We want ringsAcross complete cycles when r = maxR:
+  // ringsAcross = maxR² · k  →  k = ringsAcross / maxR²
+  const k = ringsAcross / (maxR * maxR);
+
+  // Central fringe order from physics (fractional part drives centre colour)
+  const m0 = model.fringeOrder; // = OPD / lambda (can be large)
+
+  for (let py = 0; py < PH; py++) {
+    const ly = py / dpr;
+    const dy = ly - cy;
+    for (let px = 0; px < PW; px++) {
+      const lx = px / dpr;
+      const r2 = (lx - cx) * (lx - cx) + dy * dy;
+      const r  = Math.sqrt(r2);
       if (r > maxR) continue;
-      // Radial phase: increases as r² to simulate diverging beam fringes
-      const radialPhase = model.phase + (r / maxR) * TAU * 6;
-      const I = 0.5 * (1 + gamma * Math.cos(radialPhase));
-      const idx = (py * w + px) * 4;
+
+      // Phase: central phase from model plus radial term (r² gives circular rings)
+      const phase = model.phase + TAU * k * r2;
+      const I = 0.5 * (1 + gamma * Math.cos(phase));
+      const idx = (py * PW + px) * 4;
       data[idx]   = sr * I;
       data[idx+1] = sg * I;
       data[idx+2] = sb * I;
@@ -817,35 +892,42 @@ function drawCircularFringes(ctx, w, h, model, colour, gamma) {
   }
   ctx.putImageData(imgData, 0, 0);
 
-  // Border
+  // Circular aperture border
   ctx.beginPath();
   ctx.arc(cx, cy, maxR, 0, TAU);
-  ctx.strokeStyle = "#1f3d5c";
+  ctx.strokeStyle = "#2a4a6a";
   ctx.lineWidth = 1;
   ctx.stroke();
 
-  fringeLegend(ctx, w, h, tiltLabel(0, model.lambda));
+  // Label: show fringe order at centre
+  const mFrac = ((m0 % 1) + 1) % 1;
+  const centreBright = mFrac < 0.1 || mFrac > 0.9;
+  fringeLegend(ctx, W, H,
+    `Equal-inclination fringes · centre ${centreBright ? "bright" : "dark"} · m₀ = ${m0.toFixed(2)}`);
 }
 
-function drawStraightFringes(ctx, w, h, model, colour, gamma, tiltMrad, lambda) {
-  const imgData = ctx.createImageData(w, h);
-  const data = imgData.data;
+// ---- Straight fringes from mirror tilt / wedge ----
+// Λ = λ / (2θ) where θ is the tilt in radians.
+// We always show exactly ~7 fringe periods across the canvas width regardless
+// of the physical Λ, but annotate the true physical spacing.
+function drawStraightFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma, tiltMrad, lambda) {
   const [sr, sg, sb] = parseColour(colour);
+  const { imgData, data } = makeImgData(ctx, PW, PH, dpr, sr, sg, sb);
 
-  // Fringe spacing in pixels: Λ = λ / (2θ) where θ in rad
+  // Physical fringe spacing (nm) from tilt
   const thetaRad = tiltMrad * 1e-3;
-  // Map 1 pixel = 1 nm for simplicity at display scale
-  // Λ_display (px): use wavelength-based ratio normalised to canvas
-  const fringeSpacingNm = lambda / (2 * thetaRad);
-  // Scale: show ~4–16 fringes across canvas width
-  const pixPerNm = w / (fringeSpacingNm * 8);
-  const Λ_px = fringeSpacingNm * pixPerNm;
+  const Lambda_nm = lambda / (2 * thetaRad);   // true physical spacing in nm
 
-  for (let py = 0; py < h; py++) {
-    for (let px = 0; px < w; px++) {
-      const phase = model.phase + TAU * (px / Λ_px);
+  // Display: force 7 fringes visible across width W so the pattern is always readable
+  const Lx_px = W / 7;   // logical pixels per fringe period
+
+  for (let py = 0; py < PH; py++) {
+    for (let px = 0; px < PW; px++) {
+      const lx = px / dpr;
+      // Phase: model.phase at lx=0 then advances linearly across canvas
+      const phase = model.phase + TAU * (lx / Lx_px);
       const I = 0.5 * (1 + gamma * Math.cos(phase));
-      const idx = (py * w + px) * 4;
+      const idx = (py * PW + px) * 4;
       data[idx]   = sr * I;
       data[idx+1] = sg * I;
       data[idx+2] = sb * I;
@@ -853,28 +935,45 @@ function drawStraightFringes(ctx, w, h, model, colour, gamma, tiltMrad, lambda) 
     }
   }
   ctx.putImageData(imgData, 0, 0);
-  const Λ_nm = fringeSpacingNm.toFixed(0);
-  fringeLegend(ctx, w, h, `Λ = ${Λ_nm < 1e6 ? Λ_nm+"nm" : "∞"} (θ=${tiltMrad.toFixed(2)}mrad)`);
+
+  // Annotate physical spacing
+  const Λ_disp = Lambda_nm < 1e7
+    ? `Λ = ${Lambda_nm >= 1000 ? (Lambda_nm/1000).toFixed(2)+"µm" : Lambda_nm.toFixed(0)+"nm"}`
+    : "Λ = ∞";
+  fringeLegend(ctx, W, H, `Straight fringes (tilt θ=${tiltMrad.toFixed(2)}mrad) · ${Λ_disp}`);
 }
 
-function drawHaidingerFringes(ctx, w, h, model, colour, gamma) {
-  const cx = w / 2, cy = h / 2;
-  const maxR = Math.min(w, h) * 0.48;
-  const imgData = ctx.createImageData(w, h);
-  const data = imgData.data;
+// ---- Haidinger rings (Fabry–Pérot equal-inclination) ----
+// T(r) = Airy function at angle θ(r).  At r=0 the beam is normal (θ=0),
+// so the on-axis phase is exactly model.phase (= 2π·2nL/λ + φ₀).
+// Moving to larger r increases the effective cavity round-trip: φ(r) = φ₀·cos θ(r).
+// We model cos θ(r) ≈ 1 − (r/maxR)²·(1 − cos_edge) where cos_edge ≈ cos(15°)≈0.97.
+function drawHaidingerFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma) {
+  const cx = W / 2, cy = H / 2;
+  const maxR = Math.min(W, H) * 0.46;
   const [sr, sg, sb] = parseColour(colour);
+  const { imgData, data } = makeImgData(ctx, PW, PH, dpr, sr, sg, sb);
   const F = model.F !== undefined ? model.F : 1;
 
-  for (let py = 0; py < h; py++) {
-    for (let px = 0; px < w; px++) {
-      const r = Math.sqrt((px - cx) ** 2 + (py - cy) ** 2) / maxR;
-      if (r > 1) continue;
-      // Cosine of incidence angle θ: for r=0 → cos θ=1, r=1 → cos θ≈0.5
-      const cosTheta = Math.cos(r * Math.PI * 0.45);
-      // Phase with angular dependence: φ(r) = φ₀ × cosθ
+  // Edge incidence angle maps to cosTheta_edge (we use 20° ≈ 0.940)
+  const cosEdge = 0.940;
+
+  for (let py = 0; py < PH; py++) {
+    const ly = py / dpr;
+    for (let px = 0; px < PW; px++) {
+      const lx = px / dpr;
+      const r2 = (lx - cx) * (lx - cx) + (ly - cy) * (ly - cy);
+      const r  = Math.sqrt(r2);
+      if (r > maxR) continue;
+
+      // Smooth cosTheta from 1 at centre to cosEdge at aperture edge
+      const cosTheta = 1 - (r / maxR) * (r / maxR) * (1 - cosEdge);
+      // Round-trip phase at this angle
       const phase = model.phase * cosTheta;
-      const I = (1 / (1 + F * Math.sin(phase / 2) ** 2)) * gamma + 0.5 * (1 - gamma);
-      const idx = (py * w + px) * 4;
+      const T = (1 / (1 + F * Math.sin(phase / 2) ** 2));
+      const I = T * gamma + 0.5 * (1 - gamma);  // coherence envelope
+
+      const idx = (py * PW + px) * 4;
       data[idx]   = sr * I;
       data[idx+1] = sg * I;
       data[idx+2] = sb * I;
@@ -882,25 +981,25 @@ function drawHaidingerFringes(ctx, w, h, model, colour, gamma) {
     }
   }
   ctx.putImageData(imgData, 0, 0);
+
   ctx.beginPath();
   ctx.arc(cx, cy, maxR, 0, TAU);
-  ctx.strokeStyle = "#1f3d5c";
+  ctx.strokeStyle = "#2a4a6a";
   ctx.lineWidth = 1;
   ctx.stroke();
-  fringeLegend(ctx, w, h, `ℱ = ${model.finesse ? model.finesse.toFixed(1) : "—"}`);
+
+  const finStr = model.finesse ? model.finesse.toFixed(1) : "—";
+  const Rstr   = (model.R * 100).toFixed(1);
+  fringeLegend(ctx, W, H, `Haidinger rings · ℱ = ${finStr} · R = ${Rstr}%`);
 }
 
-function fringeLegend(ctx, w, h, text) {
-  ctx.fillStyle = "rgba(6,14,26,0.7)";
-  ctx.fillRect(0, h - 18, w, 18);
+function fringeLegend(ctx, W, H, text) {
+  ctx.fillStyle = "rgba(6,14,26,0.82)";
+  ctx.fillRect(0, H - 20, W, 20);
   ctx.fillStyle = "#7da4c0";
   ctx.font = "10px monospace";
   ctx.textAlign = "center";
-  ctx.fillText(text, w / 2, h - 5);
-}
-
-function tiltLabel(tilt, lambda) {
-  return tilt < 0.01 ? "Circular fringes (tilt = 0)" : `Λ = ${(lambda/(2*tilt*1e-3)).toFixed(0)} nm`;
+  ctx.fillText(text, W / 2, H - 6);
 }
 
 function parseColour(css) {
