@@ -616,246 +616,329 @@ function drawOPDAnnotation(ctx, model, inp) {
 }
 
 // --- Michelson ---
+// Canonical layout: source enters from left → BS45° at centre → arm A goes UP,
+// arm B goes RIGHT. Detector exits DOWNWARD from BS (perpendicular to source).
+// Both return beams drawn offset slightly to show the separate paths clearly.
 function drawMichelson(inp, model, colour) {
   const [ctx, w, h] = setupCanvas($("diagram"));
   ctx.fillStyle = "#060e1a"; ctx.fillRect(0,0,w,h);
 
-  const cx = w * 0.45;
-  const cy = h * 0.58;
-  const travel = Math.min(w * 0.32, h * 0.35);
-  const scaleNm = travel / Math.max(inp.armA, inp.armB, 1);
+  // Fixed layout coordinates — proportional to canvas, not to arm lengths
+  const bsX = w * 0.46, bsY = h * 0.55;
+  const armLen = Math.min(w * 0.30, h * 0.32); // fixed display arm length
 
-  const lenA = inp.armA * scaleNm;
-  const lenB = inp.armB * scaleNm;
+  // Source → BS (horizontal from left)
+  drawSource(ctx, w * 0.10, bsY, colour);
+  drawBeam(ctx, w * 0.14, bsY, bsX - 14, bsY, colour);
 
-  // Source beam
-  drawSource(ctx, w * 0.10, cy, colour);
-  drawBeam(ctx, w * 0.14, cy, cx - 12, cy, colour);
+  // BS
+  drawBeamSplitter(ctx, bsX, bsY, 14, "BS");
 
-  // Beam splitter
-  drawBeamSplitter(ctx, cx, cy, 14, "BS");
+  // Arm A: vertical upward
+  const maY = bsY - armLen;
+  // Forward beam slightly left of centre
+  drawBeam(ctx, bsX - 2, bsY - 14, bsX - 2, maY, colour);
+  drawMirror(ctx, bsX, maY, true, `M_A`);
+  // Return beam slightly right of centre
+  drawBeam(ctx, bsX + 2, maY, bsX + 2, bsY - 14, colour);
+  // Arm A label
+  ctx.save();
+  ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace"; ctx.textAlign = "left";
+  ctx.fillText(displayLength(inp.armA), bsX + 8, (bsY + maY) / 2 + 4);
+  ctx.restore();
 
-  // Arm A (vertical, up)
-  drawBeam(ctx, cx, cy, cx, cy - lenA, colour);
-  drawMirror(ctx, cx, cy - lenA, true, `M_A  ${displayLength(inp.armA)}`);
-  // Return beam A
-  drawBeam(ctx, cx, cy - lenA, cx, cy, colour);
+  // Arm B: horizontal rightward
+  const mbX = bsX + armLen;
+  drawBeam(ctx, bsX + 14, bsY - 2, mbX, bsY - 2, colour);
+  drawMirror(ctx, mbX, bsY, false, `M_B`);
+  drawBeam(ctx, mbX, bsY + 2, bsX + 14, bsY + 2, colour);
+  ctx.save();
+  ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace"; ctx.textAlign = "center";
+  ctx.fillText(displayLength(inp.armB), (bsX + mbX) / 2, bsY - 10);
+  ctx.restore();
 
-  // Arm B (horizontal, right)
-  drawBeam(ctx, cx, cy, cx + lenB, cy, colour);
-  drawMirror(ctx, cx + lenB, cy, false, `M_B  ${displayLength(inp.armB)}`);
-  // Return beam B
-  drawBeam(ctx, cx + lenB, cy, cx, cy, colour);
+  // Recombined output → detector downward
+  const detY = bsY + h * 0.20;
+  drawBeam(ctx, bsX, bsY + 14, bsX, detY, colour);
+  drawDetector(ctx, bsX, detY, colour);
 
-  // Recombined beam to detector (downward)
-  drawBeam(ctx, cx, cy, cx, cy + h * 0.22, colour);
-  drawDetector(ctx, cx, cy + h * 0.22, colour);
+  // Compensator plate label (realistic: Michelson uses one to equalise glass path)
+  ctx.save();
+  ctx.fillStyle = "#4a8fa8"; ctx.font = "9px monospace"; ctx.textAlign = "left";
+  ctx.fillText("CP", bsX + 16, bsY + 16);
+  ctx.restore();
 
   drawOPDAnnotation(ctx, model, inp);
 }
 
 // --- Mach–Zehnder ---
+// Correct topology: source → BS1 → two parallel arms → BS2 → detector.
+// Arm A (lower, reference) goes BS1 → M1(bottom-right) → BS2.
+// Arm B (upper, sample)   goes BS1 → M2(top-left)     → BS2.
+// Both beamsplitters are 45° oriented. Detector exits sideways from BS2.
 function drawMachZehnder(inp, model, colour) {
   const [ctx, w, h] = setupCanvas($("diagram"));
   ctx.fillStyle = "#060e1a"; ctx.fillRect(0,0,w,h);
 
-  const x1 = w * 0.25, x2 = w * 0.72;
-  const yLower = h * 0.72, yUpper = h * 0.25;
+  // Layout: rectangular beam path
+  const x1 = w * 0.26, x2 = w * 0.74;   // BS1 and BS2 x positions
+  const yA = h * 0.68, yB = h * 0.28;    // lower (A) and upper (B) y positions
 
-  // Source
-  drawSource(ctx, w * 0.08, yLower, colour);
-  drawBeam(ctx, w * 0.12, yLower, x1, yLower, colour);
+  // Source → BS1
+  drawSource(ctx, w * 0.08, yA, colour);
+  drawBeam(ctx, w * 0.12, yA, x1 - 13, yA, colour);
 
-  // BS1
-  drawBeamSplitter(ctx, x1, yLower, 13, "BS1");
+  // BS1 (at bottom-left corner)
+  drawBeamSplitter(ctx, x1, yA, 13, "BS1");
 
-  // Lower arm (path A)
-  drawBeam(ctx, x1, yLower, x2, yLower, colour);
+  // ----- ARM A (reference, lower horizontal) -----
+  // BS1 → M1 (bottom-right corner mirror, vertical) → BS2
+  drawBeam(ctx, x1 + 13, yA, x2 - 5, yA, colour);        // lower horizontal
+  // M1: flat vertical mirror at bottom-right, deflects beam upward
+  drawMirror(ctx, x2, yA, false, "M1");
+  drawBeam(ctx, x2, yA - 5, x2, yB + 13, colour);          // right vertical up to BS2
 
-  // Mirror M1 (turns lower path upward to BS2)
-  drawMirror(ctx, x2, yLower, false, "M2");
-  drawBeam(ctx, x2, yLower, x2, yUpper, colour);
+  // ----- ARM B (sample, upper horizontal) -----
+  // BS1 deflects upward → M2 (top-left corner mirror, horizontal) → BS2
+  drawBeam(ctx, x1, yA - 13, x1, yB + 5, colour);          // left vertical up
+  // M2: flat horizontal mirror at top-left, deflects beam rightward
+  drawMirror(ctx, x1, yB, true, "M2");
+  drawBeam(ctx, x1 + 5, yB, x2 - 13, yB, colour);          // upper horizontal
 
-  // Upper arm (path B) — M1 deflects to BS2
-  drawBeam(ctx, x1, yLower, x1, yUpper, colour);  // from BS1 up
-  drawMirror(ctx, x1, yUpper, true, "M1");
-  drawBeam(ctx, x1, yUpper, x2, yUpper, colour);
+  // BS2 (at top-right corner)
+  drawBeamSplitter(ctx, x2, yB, 13, "BS2");
 
-  // BS2
-  drawBeamSplitter(ctx, x2, yUpper, 13, "BS2");
-  // Output
-  drawBeam(ctx, x2, yUpper, x2, yUpper + h * 0.2, colour);
-  drawDetector(ctx, x2, yUpper + h * 0.2, colour);
+  // Output → detector (rightward from BS2)
+  drawBeam(ctx, x2 + 13, yB, x2 + w * 0.12, yB, colour);
+  drawDetector(ctx, x2 + w * 0.12, yB, colour);
 
   // Path labels
   ctx.save();
   ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace"; ctx.textAlign = "center";
-  ctx.fillText(`A: ${displayLength(inp.armA)}`, (x1 + x2) / 2, yLower + 18);
-  ctx.fillText(`B: ${displayLength(inp.armB)}`, (x1 + x2) / 2, yUpper - 10);
+  ctx.fillText(`A: ${displayLength(inp.armA)}`, (x1 + x2) / 2, yA + 16);
+  ctx.fillText(`B: ${displayLength(inp.armB)}`, (x1 + x2) / 2, yB - 8);
+  // Sample cell indicator on arm B
+  const midBx = (x1 + x2) / 2;
+  ctx.strokeStyle = "#3dd6f5"; ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
+  ctx.strokeRect(midBx - 18, yB - 12, 36, 10);
+  ctx.setLineDash([]);
+  ctx.fillStyle = "#3dd6f5"; ctx.font = "9px monospace";
+  ctx.fillText(`n=${inp.n.toFixed(3)}`, midBx, yB - 14);
   ctx.restore();
 
   drawOPDAnnotation(ctx, model, inp);
 }
 
 // --- Fabry–Pérot ---
+// Shows the etalon with properly staggered multi-bounce beams that zig-zag
+// between M1 and M2, dimming with R^k. A reflected beam exits back toward
+// source from M1, and transmitted beams exit from M2.
 function drawFabryPerot(inp, model, colour) {
   const [ctx, w, h] = setupCanvas($("diagram"));
   ctx.fillStyle = "#060e1a"; ctx.fillRect(0,0,w,h);
 
-  const yMid = h * 0.52;
-  const m1x = w * 0.28;
-  const m2x = w * 0.68;
-  const R = inp.reflectivity / 100;
+  const yMid = h * 0.50;
+  const m1x  = w * 0.32;
+  const m2x  = w * 0.68;
+  const R    = inp.reflectivity / 100;
+  const mH   = h * 0.32; // mirror half-height
 
   // Source
   drawSource(ctx, w * 0.08, yMid, colour);
-  drawBeam(ctx, w * 0.12, yMid, m1x - 2, yMid, colour);
+  drawBeam(ctx, w * 0.12, yMid, m1x - 4, yMid, colour);
 
-  // Mirror 1 (partial reflector)
+  // Helper: draw partial-reflector mirror rectangle with cyan overlay
+  function drawPRM(x, label) {
+    ctx.save();
+    ctx.fillStyle = "#f5c542";
+    ctx.fillRect(x - 4, yMid - mH, 8, mH * 2);
+    ctx.globalAlpha = 0.35 + 0.3 * R; // more opaque = higher R
+    ctx.fillStyle = "#3dd6f5";
+    ctx.fillRect(x - 4, yMid - mH, 8, mH * 2);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace"; ctx.textAlign = "center";
+    ctx.fillText(label, x, yMid - mH - 6);
+    ctx.fillText(`R=${(R * 100).toFixed(0)}%`, x, yMid + mH + 14);
+    ctx.restore();
+  }
+  drawPRM(m1x, "M1");
+  drawPRM(m2x, "M2");
+
+  // Input beam hits M1: portion reflected back, portion transmitted into cavity
+  // Show back-reflection from M1 (goes left, fades)
   ctx.save();
-  ctx.fillStyle = "#f5c542";
-  ctx.fillRect(m1x - 3, yMid - 28, 6, 56);
-  ctx.globalAlpha = 0.4;
-  ctx.fillStyle = "#3dd6f5";
-  ctx.fillRect(m1x - 3, yMid - 28, 6, 56);
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace"; ctx.textAlign = "center";
-  ctx.fillText("M1", m1x, yMid - 34);
-  ctx.fillText(`R=${R.toFixed(2)}`, m1x, yMid + 42);
+  ctx.strokeStyle = colour; ctx.globalAlpha = R * 0.7; ctx.lineWidth = 1.2;
+  ctx.setLineDash([4, 4]);
+  drawBeam(ctx, m1x - 4, yMid - 8, w * 0.12, yMid - 8, colour);
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
   ctx.restore();
 
-  // Transmitted beam into cavity + multi-bounce (3 round-trips)
-  const numBounce = 3;
+  // Multi-bounce zig-zag inside cavity — proper diagonal offsets to show bounces
+  const numBounce = 5;
+  const spacing   = (mH * 1.4) / numBounce;  // vertical spread across mirror face
   for (let i = 0; i < numBounce; i++) {
-    const alpha = Math.pow(R, i) * 0.8;
+    const alpha = Math.pow(R, i) * (i === 0 ? (1 - R) : R * (1 - R));
+    const brightScale = i === 0 ? 1 : Math.pow(R, i);
+    const yOff  = -mH * 0.6 + i * spacing * 1.2;   // vertical offset per pass
     ctx.save();
     ctx.strokeStyle = colour;
-    ctx.globalAlpha = alpha;
-    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = Math.max(0.08, brightScale);
+    ctx.lineWidth = Math.max(0.6, 2 - i * 0.3);
+    // Forward pass: M1 → M2
     ctx.beginPath();
-    ctx.moveTo(m1x + 3, yMid - 10 + i * 7);
-    ctx.lineTo(m2x - 3, yMid - 10 + i * 7);
+    ctx.moveTo(m1x + 4, yMid + yOff);
+    ctx.lineTo(m2x - 4, yMid + yOff + spacing * 0.5);
     ctx.stroke();
-    // Return
+    // Return pass: M2 → M1 (slightly offset)
+    if (i < numBounce - 1) {
+      ctx.beginPath();
+      ctx.moveTo(m2x - 4, yMid + yOff + spacing * 0.5);
+      ctx.lineTo(m1x + 4, yMid + yOff + spacing);
+      ctx.stroke();
+    }
+    // Transmitted beam leaking out of M2 rightward (each pass)
+    ctx.globalAlpha = Math.max(0.05, Math.pow(R, i) * (1 - R));
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(m2x - 3, yMid + 10 - i * 7);
-    ctx.lineTo(m1x + 3, yMid + 10 - i * 7);
+    ctx.moveTo(m2x + 4, yMid + yOff + spacing * 0.5);
+    ctx.lineTo(m2x + (m2x - m1x) * 0.25, yMid + yOff + spacing * 0.5);
     ctx.stroke();
     ctx.restore();
   }
 
-  // Mirror 2 (partial reflector)
-  ctx.save();
-  ctx.fillStyle = "#f5c542";
-  ctx.fillRect(m2x - 3, yMid - 28, 6, 56);
-  ctx.globalAlpha = 0.4;
-  ctx.fillStyle = "#3dd6f5";
-  ctx.fillRect(m2x - 3, yMid - 28, 6, 56);
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace"; ctx.textAlign = "center";
-  ctx.fillText("M2", m2x, yMid - 34);
-  ctx.fillText(`R=${R.toFixed(2)}`, m2x, yMid + 42);
-  ctx.restore();
-
-  // Transmitted output
-  drawBeam(ctx, m2x + 3, yMid, w * 0.88, yMid, colour);
+  // Main transmitted output beam (brightest — on-resonance)
+  drawBeam(ctx, m2x + 4, yMid, w * 0.88, yMid, colour);
   drawDetector(ctx, w * 0.88, yMid, colour);
 
-  // Spacing annotation
+  // Cavity spacing dimension line
   ctx.save();
-  ctx.strokeStyle = "#7da4c0"; ctx.lineWidth = 0.8; ctx.setLineDash([3,3]);
-  ctx.beginPath(); ctx.moveTo(m1x, yMid + 52); ctx.lineTo(m2x, yMid + 52); ctx.stroke();
+  ctx.strokeStyle = "#4a6e89"; ctx.lineWidth = 0.8; ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.moveTo(m1x, yMid + mH + 22); ctx.lineTo(m2x, yMid + mH + 22); ctx.stroke();
   ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(m1x, yMid + mH + 18); ctx.lineTo(m1x, yMid + mH + 26); ctx.stroke();
+  ctx.moveTo(m2x, yMid + mH + 18); ctx.lineTo(m2x, yMid + mH + 26); ctx.stroke();
   ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace"; ctx.textAlign = "center";
-  ctx.fillText(`L = ${displayLength(inp.armA)}`, (m1x + m2x) / 2, yMid + 64);
+  ctx.fillText(`L = ${displayLength(inp.armA)}`, (m1x + m2x) / 2, yMid + mH + 36);
   ctx.restore();
 
   drawOPDAnnotation(ctx, model, inp);
 }
 
 // --- Sagnac ---
+// Correct square ring topology: BS at bottom-left, three flat mirrors at
+// the other three corners. CW beam (solid) and CCW beam (dashed) both drawn.
+// Rotation arrow shows angular velocity Ω in the plane of the ring.
 function drawSagnac(inp, model, colour) {
   const [ctx, w, h] = setupCanvas($("diagram"));
   ctx.fillStyle = "#060e1a"; ctx.fillRect(0,0,w,h);
 
-  const cx = w * 0.50, cy = h * 0.50;
-  const rx = w * 0.28, ry = h * 0.30;
-
-  // Ring beam path (ellipse to represent ring)
-  const CCW_ALPHA = 0.75;
-  const CW_ALPHA  = 0.4;
   const omega = inp.rotationRate;
 
-  // CW beam
+  // Square ring corners: BS at bottom-left, mirrors at other three corners
+  const margin = 0.12;
+  const x0 = w * margin,       y0 = h * (1 - margin * 1.6);  // BS (bottom-left)
+  const x1 = w * (1 - margin), y1 = h * (1 - margin * 1.6);  // M3 (bottom-right)
+  const x2 = w * (1 - margin), y2 = h * margin;               // M2 (top-right)
+  const x3 = w * margin,       y3 = h * margin;               // M1 (top-left)
+
+  // Source enters from left of BS
+  drawSource(ctx, x0 - w * 0.09, y0, colour);
+  drawBeam(ctx, x0 - w * 0.06, y0, x0 - 13, y0, colour);
+
+  // Draw BS at x0,y0
+  drawBeamSplitter(ctx, x0, y0, 12, "BS");
+
+  // Draw the three corner mirrors
+  // M1 top-left: horizontal (beam travels horizontally through top)
+  drawMirror(ctx, x3, y3, true,  "M1");
+  // M2 top-right: vertical (beam travels vertically on right side)
+  drawMirror(ctx, x2, y2, false, "M2");
+  // M3 bottom-right: horizontal (beam travels horizontally on bottom)
+  drawMirror(ctx, x1, y1, true,  "M3");
+
+  // CCW beam path: BS → up-left → top-left → top-right → bottom-right → BS
+  //   offset +3px inward so it doesn't overlap CW
+  const off = 3;
   ctx.save();
-  ctx.strokeStyle = colour;
-  ctx.globalAlpha = CW_ALPHA;
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = colour; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.85;
   ctx.beginPath();
-  ctx.ellipse(cx, cy, rx, ry, 0, 0, TAU);
+  ctx.moveTo(x0, y0 - 12);              // leave BS upward
+  ctx.lineTo(x3 + off, y3 + off);       // to M1
+  ctx.moveTo(x3 + off, y3);             // leave M1 rightward (top side)
+  ctx.lineTo(x2 - off, y2 + off);       // to M2
+  ctx.moveTo(x2, y2 + off);             // leave M2 downward
+  ctx.lineTo(x1 - off, y1 - off);       // to M3
+  ctx.moveTo(x1 - off, y1);             // leave M3 leftward (bottom side)
+  ctx.lineTo(x0 + 12, y0 - off);        // back to BS
+  ctx.stroke();
+  ctx.restore();
+
+  // CW beam path: BS → right-bottom → bottom-right → top-right → top-left → BS
+  //   offset -3px (opposite side)
+  ctx.save();
+  ctx.strokeStyle = colour; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.45;
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath();
+  ctx.moveTo(x0 + 12, y0 + off);       // leave BS rightward (bottom side)
+  ctx.lineTo(x1 + off, y1 + off);      // to M3
+  ctx.moveTo(x1, y1 - off);            // leave M3 upward
+  ctx.lineTo(x2 + off, y2 + off);      // to M2
+  ctx.moveTo(x2 - off, y2);            // leave M2 leftward (top side)
+  ctx.lineTo(x3 - off, y3 + off);      // to M1
+  ctx.moveTo(x3, y3 + off);            // leave M1 downward
+  ctx.lineTo(x0 - off, y0 - 12);       // back to BS
   ctx.stroke();
   ctx.setLineDash([]);
   ctx.restore();
 
-  // CCW beam
+  // Detector exits BS downward
+  const detY = y0 + h * 0.14;
+  drawBeam(ctx, x0, y0 + 12, x0, detY, colour);
+  drawDetector(ctx, x0, detY, colour);
+
+  // CCW / CW direction labels
   ctx.save();
-  ctx.strokeStyle = colour;
-  ctx.globalAlpha = CCW_ALPHA;
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, rx, ry, 0, 0, TAU, true);
-  ctx.stroke();
+  ctx.font = "9px monospace"; ctx.textAlign = "center";
+  const ringCx = (x0 + x2) / 2, ringCy = (y0 + y2) / 2;
+  ctx.fillStyle = colour; ctx.globalAlpha = 0.85;
+  ctx.fillText("CCW", ringCx - 20, ringCy);
+  ctx.globalAlpha = 0.45;
+  ctx.fillText("CW", ringCx + 20, ringCy + 14);
   ctx.restore();
 
-  // Beam splitter at left of ring
-  const bsX = cx - rx, bsY = cy;
-  drawBeamSplitter(ctx, bsX, bsY, 11, "BS");
-
-  // Source from left
-  drawSource(ctx, bsX - w * 0.12, bsY, colour);
-  drawBeam(ctx, bsX - w * 0.08, bsY, bsX - 12, bsY, colour);
-
-  // Detector below BS
-  drawBeam(ctx, bsX, bsY, bsX, bsY + h * 0.20, colour);
-  drawDetector(ctx, bsX, bsY + h * 0.20, colour);
-
-  // Rotation arrow indicator
+  // Rotation arrow inside the ring
   if (Math.abs(omega) > 0.05) {
     ctx.save();
-    ctx.strokeStyle = "#f5834a";
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#f5834a"; ctx.lineWidth = 2;
+    const arrowR = Math.min(x2 - x0, y0 - y2) * 0.20;
     const dir = omega > 0 ? 1 : -1;
     ctx.beginPath();
-    ctx.arc(cx, cy, rx * 0.42, -Math.PI * 0.5, -Math.PI * 0.5 + dir * TAU * 0.6);
+    ctx.arc(ringCx, ringCy, arrowR, -Math.PI / 2, -Math.PI / 2 + dir * TAU * 0.7);
     ctx.stroke();
-    // Arrowhead
-    const aAngle = -Math.PI * 0.5 + dir * TAU * 0.6;
-    const ax = cx + rx * 0.42 * Math.cos(aAngle);
-    const ay = cy + rx * 0.42 * Math.sin(aAngle);
+    // Arrowhead dot
+    const aAngle = -Math.PI / 2 + dir * TAU * 0.7;
     ctx.fillStyle = "#f5834a";
     ctx.beginPath();
-    ctx.arc(ax, ay, 4, 0, TAU);
+    ctx.arc(ringCx + arrowR * Math.cos(aAngle), ringCy + arrowR * Math.sin(aAngle), 4, 0, TAU);
     ctx.fill();
-    ctx.fillStyle = "#f5834a";
-    ctx.font = "bold 11px monospace";
-    ctx.textAlign = "center";
-    ctx.fillText(`Ω = ${omega.toFixed(1)}°/s`, cx, cy + ry + 20);
+    ctx.font = "bold 10px monospace"; ctx.textAlign = "center";
+    ctx.fillText(`Ω = ${omega.toFixed(1)}°/s`, ringCx, ringCy + arrowR + 14);
     ctx.restore();
   } else {
     ctx.save();
-    ctx.fillStyle = "#4a6e89"; ctx.font = "11px monospace"; ctx.textAlign = "center";
-    ctx.fillText("Ω = 0  (no Sagnac shift)", cx, cy + ry + 20);
+    ctx.fillStyle = "#4a6e89"; ctx.font = "10px monospace"; ctx.textAlign = "center";
+    ctx.fillText("Ω = 0", ringCx, ringCy + 14);
     ctx.restore();
   }
 
-  // Ring radius label
+  // Ring radius annotation (dashed line from centre to corner)
   ctx.save();
-  ctx.strokeStyle = "#4a6e89"; ctx.lineWidth = 0.8; ctx.setLineDash([2,4]);
-  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + rx, cy); ctx.stroke();
+  ctx.strokeStyle = "#4a6e89"; ctx.lineWidth = 0.7; ctx.setLineDash([2, 4]);
+  ctx.beginPath(); ctx.moveTo(ringCx, ringCy); ctx.lineTo(x0, y0); ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace"; ctx.textAlign = "center";
-  ctx.fillText(`r = ${displayLength(inp.armA)}`, cx + rx / 2, cy - 6);
+  ctx.fillStyle = "#7da4c0"; ctx.font = "9px monospace"; ctx.textAlign = "center";
+  ctx.fillText(`r = ${displayLength(inp.armA)}`, (ringCx + x0) / 2 + 14, (ringCy + y0) / 2 - 6);
   ctx.restore();
 
   drawOPDAnnotation(ctx, model, inp);
@@ -863,38 +946,28 @@ function drawSagnac(inp, model, colour) {
 
 // ==================== Fringe Pattern ====================
 //
-// PHYSICAL SCALE MODEL
-// --------------------
-// The fringe canvas represents a physical aperture defined by FRINGE_FOV_MM
-// (the detector / beam diameter in mm). This establishes a fixed pixel-per-nm
-// ratio so all fringe spacings are rendered at their true physical sizes.
+// PHYSICAL SCALE MODEL — wavelength-correct rendering
+// ---------------------------------------------------
+// For circular / straight fringes we fix the *focal length* f_px of the
+// observing lens in pixels (constant for a given canvas size and FOV).
+// The angular position θ of a ring depends on λ, so the ring radius
+//   r_j = f_px · θ_j = f_px · √(j·λ/OPD₀)
+// changes with λ for the same OPD — shorter λ produces tighter rings.
 //
-//   px_per_nm = (canvas width in px) / (FOV in nm)
-//   FOV in nm = FRINGE_FOV_MM * 1e6
-//
-// Every fringe type derives its pixel pitch directly from the physics:
-//
-//  Circular (equal-inclination):
-//    Ring j has half-angle θ_j where cos θ_j = 1 − j·λ/(2nL)  →  θ_j ≈ √(j·λ/OPD)
-//    Radial position of ring j (for small angles):  r_j = f·θ_j
-//    where f = effective focal length of the observing lens.
-//    We set f so that θ_max (half-angle at aperture edge) equals
-//    half the FOV divided by f  →  f = (FOV/2) / θ_max.
-//    θ_max chosen as √(RING_ORDERS_SHOWN · λ / |OPD|) to display ~RING_ORDERS_SHOWN rings.
+// f_px is computed once from a REFERENCE_LAMBDA (633 nm) and a target
+// ring count RING_ORDERS_SHOWN_REF at that wavelength so the view is
+// well-filled at He-Ne.  At other λ the ring density changes correctly.
 //
 //  Straight (tilt wedge):
-//    Fringe spacing Λ = λ / (2θ_tilt)  [nm physical].
-//    Rendered at true scale: fringe_px = Λ * px_per_nm.
-//    If fringe_px < 2 (sub-pixel) or > W (zero fringes visible), a notice is shown.
+//    Fringe spacing Λ = λ / (2θ_tilt)  [nm].  Rendered at px = Λ · px_per_nm.
+//    Shorter λ → finer fringes at same tilt.
 //
 //  Haidinger (Fabry–Pérot):
-//    Ring j half-angle θ_j ≈ √(j · FSR_λ / λ · 2) (for small angles near normal).
-//    Exact: cos θ_j = 1 − j·λ/(2nL) (same as equal-inclination).
-//    Pixel scale identical to circular case.
+//    Auto-scales halfAngle_mrad so that ~5 rings fill the aperture for
+//    the current cavity / finesse parameters.
 
-// Number of ring orders to display in circular/Haidinger mode.
-// Larger = more rings, smaller spacing. Calibrated for 50 µm OPD at 633 nm ≈ 79 orders.
-const RING_ORDERS_SHOWN = 8;
+const RING_ORDERS_REF  = 8;     // rings shown at REFERENCE_LAMBDA
+const REFERENCE_LAMBDA = 633;   // nm
 
 function drawFringePattern(inp, model, colour) {
   const canvas = $("fringeCanvas");
@@ -915,13 +988,12 @@ function drawFringePattern(inp, model, colour) {
   }
 
   // ------ Physical field-of-view ------
-  // Read FOV from the HTML control (mm). Default 10 mm.
-  const fov_mm  = Math.max(0.01, Number($("fringeAperture")?.value ?? 10));
-  const fov_nm  = fov_mm * 1e6;          // nm
-  const px_per_nm = W / fov_nm;          // logical px per nm
+  const fov_mm    = Math.max(0.01, Number($("fringeAperture")?.value ?? 10));
+  const fov_nm    = fov_mm * 1e6;
+  const px_per_nm = W / fov_nm;
 
   const gamma = model.gamma;
-  const tilt  = inp.tiltAngle;           // mrad
+  const tilt  = inp.tiltAngle; // mrad
 
   if (currentInstrument === "fabryPerot") {
     drawHaidingerFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
@@ -1132,30 +1204,28 @@ function parseColour(css) {
 }
 
 // ==================== Circular fringes (equal-inclination) ====================
-// Physical model: for a beam of divergence half-angle θ, the OPD at angle θ is
-//   OPD(θ) = 2n·L·cos(θ)  →  OPD(0) − OPD(θ) ≈ n·L·θ²  (small angle)
-// The j-th dark ring occurs at r_j = f·θ_j where θ_j = √(j·λ / OPD₀).
-// We choose focal length f so that RING_ORDERS_SHOWN rings fit in the aperture.
+// Fixed focal length derived from REFERENCE_LAMBDA so that at He-Ne the
+// aperture shows RING_ORDERS_REF rings.  At other λ the fringe density
+// changes correctly: more rings for shorter λ (same OPD → more cycles).
 function drawCircularFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
                              inp, px_per_nm, fov_mm) {
   const RULER_H = 22;
   const imageH  = H - RULER_H;
   const cx = W / 2, cy = imageH / 2;
-  const aperR_nm = fov_mm * 1e6 / 2;              // aperture radius in nm
-  const aperR_px = aperR_nm * px_per_nm * 0.92;   // leave a thin border
-  const maxR_px  = Math.min(aperR_px, Math.min(W, imageH) * 0.46);
+  const maxR_px = Math.min(W, imageH) * 0.46;
 
   const [sr, sg, sb] = parseColour(colour);
   const { imgData, data } = makeImgData(ctx, PW, PH);
 
-  // OPD₀: the on-axis optical path difference (nm). If zero → solid fill.
-  const OPD0 = Math.abs(model.opd);
+  const OPD0   = Math.abs(model.opd);
+  const lambda = model.lambda;
+  const phaseOffset = inp.phaseOffset * Math.PI / 180;
 
   if (OPD0 < 1e-6) {
-    // Zero OPD: uniform intensity from phase offset alone
+    // Zero OPD: uniform field
     const I = 0.5 * (1 + gamma * Math.cos(model.phase));
-    const ib = Math.round(I * 255);
-    for (let py = 0; py < Math.round(imageH * dpr); py++) {
+    const PH_img = Math.round(imageH * dpr);
+    for (let py = 0; py < PH_img; py++) {
       const ly = py / dpr - cy;
       for (let px2 = 0; px2 < PW; px2++) {
         const lx = px2 / dpr - cx;
@@ -1165,11 +1235,13 @@ function drawCircularFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
       }
     }
   } else {
-    // Focal length f so that ring RING_ORDERS_SHOWN lands at maxR_px:
-    //   maxR_px = f_px · θ_max,   θ_max = sqrt(RING_ORDERS_SHOWN · λ / OPD0)
-    const lambda = model.lambda;
-    const theta_max = Math.sqrt(RING_ORDERS_SHOWN * lambda / OPD0);
-    const f_px = maxR_px / theta_max;              // px per radian
+    // Fixed focal length: calibrate at REFERENCE_LAMBDA so RING_ORDERS_REF rings
+    // fill the aperture.  θ_max_ref = √(RING_ORDERS_REF · λ_ref / OPD0)
+    // f_px = maxR_px / θ_max_ref  — this is FIXED regardless of actual λ.
+    // At a shorter λ the ring j radius r_j = f_px·√(j·λ/OPD0) is smaller
+    // → more rings fit → fringe pattern visually differs between wavelengths.
+    const theta_max_ref = Math.sqrt(RING_ORDERS_REF * REFERENCE_LAMBDA / OPD0);
+    const f_px = maxR_px / theta_max_ref;   // fixed focal length in px/rad
 
     const PH_img = Math.round(imageH * dpr);
     for (let py = 0; py < PH_img; py++) {
@@ -1179,13 +1251,10 @@ function drawCircularFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
         const r_px = Math.sqrt(lx * lx + ly * ly);
         if (r_px > maxR_px) continue;
 
-        // Physical angle θ in radians
         const theta = r_px / f_px;
-        // OPD(θ) = OPD0 · cos(θ) ≈ OPD0 · (1 − θ²/2) for small θ
-        const opd_theta = OPD0 * (1 - theta * theta / 2);
-        // Use sign of original OPD for correct phase direction
+        // Exact equal-inclination OPD: OPD(θ) = OPD0·cos(θ)
+        const opd_theta = OPD0 * Math.cos(theta);
         const signed_opd = Math.sign(model.opd) * opd_theta;
-        const phaseOffset = inp.phaseOffset * Math.PI / 180;
         const phase = TAU * (signed_opd / lambda) + phaseOffset;
         const I = 0.5 * (1 + gamma * Math.cos(phase));
 
@@ -1197,7 +1266,7 @@ function drawCircularFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
 
   ctx.putImageData(imgData, 0, 0);
 
-  // Aperture circle border
+  // Aperture border
   ctx.beginPath();
   ctx.arc(cx, cy, maxR_px, 0, TAU);
   ctx.strokeStyle = "#2a4a6a"; ctx.lineWidth = 1; ctx.stroke();
@@ -1209,22 +1278,23 @@ function drawCircularFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
   ctx.beginPath(); ctx.moveTo(cx, cy - 12); ctx.lineTo(cx, cy + 12); ctx.stroke();
   ctx.setLineDash([]);
 
-  // Physical ring spacing annotation
-  const ringSpacing_nm = OPD0 < 1 ? null
-    : model.lambda * model.lambda / (OPD0 * 2 * Math.PI);  // not exact but indicative
-  // Exact: first ring radius = f_px · sqrt(λ/OPD0) in px → in nm: * (1/px_per_nm)
-  const f_px2 = OPD0 < 1 ? null : maxR_px / Math.sqrt(RING_ORDERS_SHOWN * model.lambda / OPD0);
-  const r1_px  = f_px2 ? f_px2 * Math.sqrt(model.lambda / OPD0) : null;
-  const r1_nm  = r1_px ? r1_px / px_per_nm : null;
+  // Annotation: first-ring radius in physical units
+  const f_px_disp = OPD0 < 1 ? null
+    : maxR_px / Math.sqrt(RING_ORDERS_REF * REFERENCE_LAMBDA / OPD0);
+  const r1_px = f_px_disp ? f_px_disp * Math.sqrt(lambda / OPD0) : null;
+  const r1_nm = r1_px ? r1_px / px_per_nm : null;
   const r1_str = r1_nm == null ? "—"
     : r1_nm < 1000 ? r1_nm.toFixed(1) + " nm"
-    : r1_nm < 1e6  ? (r1_nm/1000).toFixed(3) + " µm"
-    :                (r1_nm/1e6).toFixed(4)   + " mm";
+    : r1_nm < 1e6  ? (r1_nm / 1e3).toFixed(3) + " µm"
+    :                (r1_nm / 1e6).toFixed(4)  + " mm";
 
-  const mFrac = ((model.fringeOrder % 1) + 1) % 1;
-  const centre = mFrac < 0.1 || mFrac > 0.9 ? "bright" : mFrac > 0.4 && mFrac < 0.6 ? "dark" : "partial";
+  // How many rings actually visible with this λ
+  const nRings = OPD0 < 1 ? 0 : Math.floor(OPD0 / lambda * (maxR_px / f_px_disp) ** 2);
+  const mFrac  = ((model.fringeOrder % 1) + 1) % 1;
+  const centre = mFrac < 0.08 || mFrac > 0.92 ? "bright"
+               : mFrac > 0.42 && mFrac < 0.58  ? "dark" : "partial";
   fringeLegend(ctx, W, H,
-    `Equal-incl. · r₁ = ${r1_str} · centre ${centre}`, RULER_H);
+    `Equal-incl. · r₁≈${r1_str} · ~${nRings} rings · centre ${centre}`, RULER_H);
   drawRuler(ctx, W, H, fov_mm * 1e6, RULER_H);
 }
 
@@ -1291,31 +1361,38 @@ function drawStraightFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
 }
 
 // ==================== Haidinger rings (Fabry–Pérot) ====================
-// The Fabry–Pérot equal-inclination pattern: transmission peaks at cos(θ) = mλ/(2nL).
-// For a fixed order m₀ near normal incidence, the j-th ring from centre is at
-//   cos(θ_j) = (m₀ − j)·λ/(2nL)  →  θ_j ≈ √(2j·λ/(2nL)) = √(j·FSR/λ·2) [small angle]
-// The angular FOV shown is ±THETA_MAX_MRAD milliradians.
-// Pixel scale: f_px = (maxR_px) / (THETA_MAX in rad).
+// Transmission peaks at cos(θ) = mλ/(2nL).  The j-th bright ring from
+// normal incidence occurs at θ_j ≈ √(j · λ / (nL)) for small angles.
+//
+// Auto-scales the angular FOV so ≈5 bright rings fill the aperture when
+// the "fringeAperture" slider is at its default; the slider lets the user
+// zoom in/out (smaller = magnified view of centre, more rings).
+// Ruler ticks are centred at θ = 0 and span symmetrically.
 function drawHaidingerFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
                               inp, px_per_nm, fov_mm) {
   const RULER_H = 22;
   const imageH  = H - RULER_H;
   const cx = W / 2, cy = imageH / 2;
+  const maxR_px = Math.min(W, imageH) * 0.46;
 
   const [sr, sg, sb] = parseColour(colour);
   const { imgData, data } = makeImgData(ctx, PW, PH);
   const F = model.F !== undefined ? model.F : 1;
 
-  // For FP we use an angular FOV, not a spatial one.
-  // The aperture control now repurposes as "half-angle view (mrad)".
-  const halfAngle_mrad = Math.max(0.1, Number($("fringeAperture")?.value ?? 10));
-  const halfAngle_rad  = halfAngle_mrad * 1e-3;
-  const maxR_px = Math.min(W, imageH) * 0.46;
-  const f_px = maxR_px / halfAngle_rad;   // px per radian
-
-  const lambda  = model.lambda;           // nm
-  const OPD0    = Math.abs(model.opd);    // nm = 2nL
+  const lambda = model.lambda;          // nm
+  const OPD0   = Math.abs(model.opd);   // nm = 2nL  (> 0)
   const phaseOffset = inp.phaseOffset * Math.PI / 180;
+
+  // Auto-compute a sensible half-angle so ~5 rings fill the aperture:
+  //   5th ring at θ₅ = √(5·λ/OPD0)
+  // The slider value is used as a *zoom multiplier*: default=10 → 5 rings,
+  // slider min=0.1 → very zoomed in, slider max=50 → very wide.
+  const sliderVal   = Math.max(0.1, Number($("fringeAperture")?.value ?? 10));
+  // auto half-angle at zoom=10 shows 5 rings; scale inversely with sliderVal
+  const autoAngle_rad = OPD0 > 1 ? Math.sqrt(5 * lambda / OPD0) : 5e-3;
+  const halfAngle_rad = autoAngle_rad * (10 / sliderVal);
+  const halfAngle_mrad = halfAngle_rad * 1e3;
+  const f_px = maxR_px / halfAngle_rad;  // px per radian
 
   const PH_img = Math.round(imageH * dpr);
   for (let py = 0; py < PH_img; py++) {
@@ -1325,8 +1402,9 @@ function drawHaidingerFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
       const r_px = Math.sqrt(lx * lx + ly * ly);
       if (r_px > maxR_px) continue;
 
-      const theta = r_px / f_px;                         // radians from optical axis
+      const theta = r_px / f_px;
       const cosTheta = Math.cos(theta);
+      // Exact Airy phase: φ = 2π·OPD0·cosθ/λ
       const phase = TAU * (OPD0 * cosTheta / lambda) + phaseOffset;
       const T = 1 / (1 + F * Math.sin(phase / 2) ** 2);
       const I = T * gamma + 0.5 * (1 - gamma);
@@ -1345,26 +1423,41 @@ function drawHaidingerFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
   // Centre crosshair
   ctx.strokeStyle = "rgba(61,214,245,0.25)"; ctx.lineWidth = 0.6;
   ctx.setLineDash([2, 3]);
-  ctx.beginPath(); ctx.moveTo(cx-12, cy); ctx.lineTo(cx+12, cy); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(cx, cy-12); ctx.lineTo(cx, cy+12); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx - 12, cy); ctx.lineTo(cx + 12, cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, cy - 12); ctx.lineTo(cx, cy + 12); ctx.stroke();
   ctx.setLineDash([]);
 
-  // Angular ruler along bottom (in mrad)
-  const span_mrad = halfAngle_mrad * 2;
+  // Angular ruler — symmetric about centre (θ = 0 maps to cx)
   {
     const rulerY = H - RULER_H;
     ctx.fillStyle = "rgba(6,14,26,0.85)";
     ctx.fillRect(0, rulerY, W, RULER_H);
 
-    const TICKS = 5;
-    const step_mrad = +(span_mrad / TICKS).toFixed(2);
-    ctx.fillStyle = "#7da4c0"; ctx.font = "9px monospace";
+    // Nice tick step in mrad
+    const span_mrad = halfAngle_mrad * 2;
+    const TICKS = 6;
+    const rawStep = span_mrad / TICKS;
+    const mag  = Math.pow(10, Math.floor(Math.log10(rawStep)));
+    let step_mrad = mag;
+    for (const m of [1, 2, 5, 10]) {
+      if (span_mrad / (m * mag) <= TICKS + 1) { step_mrad = m * mag; break; }
+    }
+
     ctx.strokeStyle = "#3dd6f5"; ctx.lineWidth = 0.8;
-    for (let ang = -halfAngle_mrad; ang <= halfAngle_mrad + 0.001; ang += step_mrad) {
-      const px_pos = ((ang + halfAngle_mrad) / span_mrad) * W;
+    ctx.fillStyle   = "#7da4c0"; ctx.font = "9px monospace";
+
+    // Ruler zero is at cx; tick positions from -halfAngle_mrad to +halfAngle_mrad
+    const firstTick = Math.ceil(-halfAngle_mrad / step_mrad) * step_mrad;
+    for (let ang = firstTick; ang <= halfAngle_mrad + step_mrad * 0.01; ang += step_mrad) {
+      // Map angle → pixel: θ=0 at cx, θ=halfAngle_mrad at cx+maxR_px
+      const px_pos = cx + (ang / halfAngle_mrad) * maxR_px;
+      if (px_pos < 0 || px_pos > W) continue;
       ctx.beginPath(); ctx.moveTo(px_pos, rulerY); ctx.lineTo(px_pos, rulerY + 5); ctx.stroke();
       ctx.textAlign = "center";
-      ctx.fillText(ang.toFixed(1), px_pos, H - 5);
+      const lbl = Math.abs(ang) < 0.001 ? "0"
+                : ang < 0 ? ang.toFixed(step_mrad < 0.1 ? 2 : 1)
+                :            "+" + ang.toFixed(step_mrad < 0.1 ? 2 : 1);
+      ctx.fillText(lbl, px_pos, H - 5);
     }
     ctx.fillStyle = "#3dd6f5"; ctx.font = "bold 9px monospace";
     ctx.textAlign = "left"; ctx.fillText("mrad", 3, H - 5);
@@ -1372,7 +1465,7 @@ function drawHaidingerFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
 
   const finStr = model.finesse ? model.finesse.toFixed(1) : "—";
   fringeLegend(ctx, W, H,
-    `ℱ = ${finStr} · ±${halfAngle_mrad.toFixed(1)} mrad half-angle`, RULER_H);
+    `ℱ = ${finStr} · ±${halfAngle_mrad.toFixed(2)} mrad`, RULER_H);
 }
 
 // ==================== Intensity vs OPD Plot  /  Sagnac: φ vs Ω ====================
@@ -1484,75 +1577,86 @@ function drawPlot(inp, model, colour) {
     return;
   }
 
-  // ---- Lambda tick marks (non-Sagnac) ----
+  // ---- Fixed x-axis: −4λ … +4λ in physical nm, centred at OPD = 0 ----
+  // The axis is FIXED; the cyan marker scrolls to show current OPD position.
+  const lambda  = model.lambda;
+  const xSpan   = 8 * lambda;    // nm
+  const xMin    = -4 * lambda;
+  const xMax    =  4 * lambda;
+  const nmToX   = (nm) => box.l + ((nm - xMin) / xSpan) * pw;
+
+  // Lambda tick marks at integer multiples
   ctx.strokeStyle = "#f5c54240"; ctx.lineWidth = 0.8;
   for (let i = -4; i <= 4; i++) {
-    const t = 0.5 + (i / 8);
-    const x = box.l + t * pw;
+    const x = nmToX(i * lambda);
     ctx.beginPath(); ctx.moveTo(x, box.t + ph); ctx.lineTo(x, box.t + ph + 5); ctx.stroke();
   }
 
   if (currentInstrument === "fabryPerot") {
     const R = inp.reflectivity / 100;
     const F = (4 * R) / (1 - R) ** 2;
-
-    // Plot Airy function in orange
     ctx.strokeStyle = "#f5834a"; ctx.lineWidth = 1.8;
     ctx.beginPath();
     for (let i = 0; i <= N; i++) {
-      const t = i / N;
-      const opdVal = model.opd + (-4 * model.lambda + t * 8 * model.lambda);
-      const phase = TAU * (opdVal / model.lambda) + phaseOffset;
-      const raw = 1 / (1 + F * Math.sin(phase / 2) ** 2);
-      const I = raw * gamma + 0.5 * (1 - gamma);
-      const x = box.l + t * pw;
-      const y = box.t + ph * (1 - I);
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      const t      = i / N;
+      const opdVal = xMin + t * xSpan;
+      const phase  = TAU * (opdVal / lambda) + phaseOffset;
+      const raw    = 1 / (1 + F * Math.sin(phase / 2) ** 2);
+      const I      = raw * gamma + 0.5 * (1 - gamma);
+      i === 0 ? ctx.moveTo(nmToX(opdVal), box.t + ph * (1 - I))
+              : ctx.lineTo(nmToX(opdVal), box.t + ph * (1 - I));
     }
     ctx.stroke();
   } else {
-    // Standard cosine fringe curve
     ctx.strokeStyle = colour; ctx.lineWidth = 1.8;
     ctx.beginPath();
     for (let i = 0; i <= N; i++) {
-      const t = i / N;
-      const opdVal = model.opd + (-4 * model.lambda + t * 8 * model.lambda);
-      const phase = TAU * (opdVal / model.lambda) + phaseOffset;
-      const I = 0.5 * (1 + gamma * Math.cos(phase));
-      const x = box.l + t * pw;
-      const y = box.t + ph * (1 - I);
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      const t      = i / N;
+      const opdVal = xMin + t * xSpan;
+      const phase  = TAU * (opdVal / lambda) + phaseOffset;
+      const I      = 0.5 * (1 + gamma * Math.cos(phase));
+      i === 0 ? ctx.moveTo(nmToX(opdVal), box.t + ph * (1 - I))
+              : ctx.lineTo(nmToX(opdVal), box.t + ph * (1 - I));
     }
     ctx.stroke();
   }
 
-  // Current-position marker (always at center)
-  const cx = box.l + 0.5 * pw;
+  // Current OPD marker — wraps onto fixed axis (modulo xSpan)
+  const opdWrapped = ((model.opd - xMin) % xSpan + xSpan) % xSpan + xMin;
+  const cx = nmToX(opdWrapped);
   const cy = box.t + ph * (1 - model.intensity);
   ctx.fillStyle = "#3dd6f5";
   ctx.beginPath(); ctx.arc(cx, cy, 4.5, 0, TAU); ctx.fill();
-  ctx.strokeStyle = "#3dd6f5"; ctx.lineWidth = 0.7; ctx.setLineDash([2,3]);
+  ctx.strokeStyle = "#3dd6f5"; ctx.lineWidth = 0.7; ctx.setLineDash([2, 3]);
   ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, box.t + ph); ctx.stroke();
   ctx.setLineDash([]);
 
   // Axis labels
   ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace"; ctx.textAlign = "center";
-  ctx.fillText(`OPD (${unitSymbol()})`, w / 2, h - 4);
+  ctx.fillText("OPD (nm)", w / 2, h - 4);
   ctx.save();
   ctx.translate(12, h / 2); ctx.rotate(-Math.PI / 2);
   ctx.fillText("I / I₀", 0, 0);
   ctx.restore();
-  ctx.textAlign = "left";
-  ctx.fillText("−4λ", box.l + 2, box.t + ph + 18);
-  ctx.textAlign = "center";
-  ctx.fillText("0", box.l + pw / 2, box.t + ph + 18);
-  ctx.textAlign = "right";
-  ctx.fillText("+4λ", box.l + pw, box.t + ph + 18);
+
+  // X tick labels (nm values)
+  ctx.fillStyle = "#7da4c0"; ctx.font = "9px monospace";
+  for (let i = -4; i <= 4; i++) {
+    if (i === 0) { ctx.textAlign = "center"; ctx.fillText("0", nmToX(0), box.t + ph + 18); continue; }
+    const nm_val = i * lambda;
+    const lbl    = Math.abs(nm_val) < 1000 ? nm_val.toFixed(0) + "" : (nm_val / 1e3).toFixed(1) + "k";
+    ctx.textAlign = "center";
+    ctx.fillText(lbl, nmToX(nm_val), box.t + ph + 18);
+  }
+  // λ annotation top-left
+  ctx.fillStyle = "#f5c542"; ctx.font = "8px monospace"; ctx.textAlign = "left";
+  ctx.fillText(`λ = ${lambda.toFixed(1)} nm`, box.l + 2, box.t + 11);
 
   // Y-axis ticks 0, 0.5, 1
   ctx.textAlign = "right";
   [[0,"0"],[0.5,"0.5"],[1,"1"]].forEach(([v, label]) => {
     const y = box.t + ph * (1 - v);
+    ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace";
     ctx.fillText(label, box.l - 3, y + 3);
     ctx.strokeStyle = "#1f3d5c"; ctx.lineWidth = 0.5;
     ctx.beginPath(); ctx.moveTo(box.l - 3, y); ctx.lineTo(box.l, y); ctx.stroke();
