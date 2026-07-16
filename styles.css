@@ -353,8 +353,9 @@ body {
   cursor: pointer;
   box-shadow: 0 0 8px rgba(61,214,245,0.45);
   transition: box-shadow 0.15s, transform 0.15s;
-  /* Prevent the thumb from adding extra height to the row */
-  margin-top: 0;
+  /* Vertically center the 15 px thumb on the 5 px track:
+     offset = (track-height − thumb-height) / 2 = (5 − 15) / 2 = −5 px */
+  margin-top: -5px;
 }
 
 .input-row input[type="range"]::-webkit-slider-thumb:hover {

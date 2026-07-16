@@ -257,7 +257,7 @@ const SOURCE_PRESETS = {
   sodium:   { wavelength: 589.3, label: "Na-D 589.3 nm" },
   ar488:    { wavelength: 488.0, label: "Ar⁺ 488.0 nm" },
   ar514:    { wavelength: 514.5, label: "Ar⁺ 514.5 nm" },
-  diode780: { wavelength: 780.0, label: "Diode 780.0 nm" },
+  diode730: { wavelength: 730.0, label: "Diode 730.0 nm" },
   custom:   { wavelength: null,  label: "Custom" }
 };
 
@@ -520,13 +520,13 @@ function spectrumColour(nm) {
   else if (nm < 510) { g = 1; b = (510 - nm) / 20; }
   else if (nm < 580) { r = (nm - 510) / 70; g = 1; }
   else if (nm < 645) { r = 1; g = (645 - nm) / 65; }
-  else if (nm < 780) { r = 1; }
+  else if (nm < 750) { r = 1; }
   else               { r = 0.8; b = 0.2; }
 
-  // Eye-sensitivity rolloff at spectral limits
+  // Eye-sensitivity rolloff at spectral limits (scaled to 750 nm upper bound)
   let att = 1;
   if      (nm < 420) att = 0.3 + 0.7 * (nm - 380) / 40;
-  else if (nm > 700) att = 0.3 + 0.7 * (780 - nm) / 80;
+  else if (nm > 700) att = 0.3 + 0.7 * (750 - nm) / 50;
   r *= att; g *= att; b *= att;
 
   // sRGB gamma encoding
@@ -536,7 +536,7 @@ function spectrumColour(nm) {
 
 const SPECTRUM_NAMES = [
   [380, 450, "Violet"],  [450, 495, "Blue"],   [495, 530, "Green"],
-  [530, 590, "Yellow"],  [590, 625, "Orange"], [625, 780, "Red"]
+  [530, 590, "Yellow"],  [590, 625, "Orange"], [625, 750, "Red"]
 ];
 
 function spectrumName(nm) {
@@ -935,18 +935,19 @@ function drawMachZehnder(inp, model, colour) {
   drawBeamSplitter(ctx, x1, yA, bs, "BS1");
 
   // ── Arm A (lower path): BS1 → M1(bottom-right) → BS2 ──
-  // Beam travels right then turns upward at M1.
-  // M1 is a 45° fold mirror that redirects a rightward beam upward (NE orientation).
-  drawBeam(ctx, x1 + bs, yA, x2, yA,      colour, 1.8, true);   // rightward to M1
-  drawFoldMirror(ctx, x2, yA, "NE", "M1", "right");
-  drawBeam(ctx, x2, yA - 1, x2, yB + bs,  colour, 1.8, true);   // upward to BS2
+  // Beam arrives from the left (+x) and must exit upward (−y).
+  // The reflecting surface bisects the 90° turn, so it lies along the ╲ diagonal.
+  // In canvas coords (y increases downward) this is orientation "SE".
+  drawBeam(ctx, x1 + bs, yA, x2, yA,     colour, 1.8, true);   // rightward to M1
+  drawFoldMirror(ctx, x2, yA, "SE", "M1", "right");
+  drawBeam(ctx, x2, yA - 1, x2, yB + bs, colour, 1.8, true);   // upward to BS2
 
   // ── Arm B (upper path): BS1 → M2(top-left) → BS2 ──
-  // Beam travels upward then turns rightward at M2.
-  // M2 is a 45° fold mirror that redirects an upward beam rightward (SE orientation).
-  drawBeam(ctx, x1, yA - bs, x1, yB,      colour, 1.8, true);   // upward to M2
+  // Beam arrives from below (−y, i.e. upward travel) and must exit rightward (+x).
+  // Same ╲ surface geometry → "SE" orientation.
+  drawBeam(ctx, x1, yA - bs, x1, yB,     colour, 1.8, true);   // upward to M2
   drawFoldMirror(ctx, x1, yB, "SE", "M2", "left");
-  drawBeam(ctx, x1 + 1, yB, x2 - bs, yB, colour, 1.8, true);    // rightward to BS2
+  drawBeam(ctx, x1 + 1, yB, x2 - bs, yB, colour, 1.8, true);   // rightward to BS2
 
   // ── BS2 → output → detector ──
   drawBeamSplitter(ctx, x2, yB, bs, "BS2");
@@ -1137,15 +1138,26 @@ function drawSagnac(inp, model, colour) {
   drawBeamSplitter(ctx, BS.x, BS.y, 13, "BS");
 
   // ── Three 45° fold mirrors at ring corners ──
-  // M1 — top-left: CCW beam arrives upward, exits rightward  → SE fold (╲)
-  //                CW  beam arrives leftward, exits downward → SE fold (same surface)
+  //
+  // Mirror orientation rule: the reflective surface bisects the angle between
+  // incoming and outgoing rays.  For 90° bends, the surface is always 45°.
+  // The orientation code selects which diagonal (╱ or ╲) and which side gets
+  // the dark backing.
+  //
+  // Ring geometry (CCW beam path):  BS(bottom-left) → up → M1(top-left)
+  //   → right → M2(top-right) → down → M3(bottom-right) → left → BS
+  //
+  // M1 top-left:    CCW beam arrives from below (↑) and exits rightward (→)
+  //   Surface bisects ↑ and →  =  ╲ diagonal  →  "SE"
   drawFoldMirror(ctx, M1.x, M1.y, "SE", "M1", "left");
-  // M2 — top-right: CCW beam arrives rightward, exits downward → NE fold (╱) back-side used
-  //                 CW  beam arrives upward, exits leftward    → same 45° surface
+  //
+  // M2 top-right:   CCW beam arrives from left (→) and exits downward (↓)
+  //   Surface bisects → and ↓  =  ╱ diagonal  →  "NE"
   drawFoldMirror(ctx, M2.x, M2.y, "NE", "M2", "right");
-  // M3 — bottom-right: CCW beam arrives downward, exits leftward → SE fold (╲) back-side
-  //                    CW  beam arrives leftward, exits upward
-  drawFoldMirror(ctx, M3.x, M3.y, "SE", "M3", "right");
+  //
+  // M3 bottom-right: CCW beam arrives from above (↓) and exits leftward (←)
+  //   Surface bisects ↓ and ←  =  ╱ diagonal  →  "NE"
+  drawFoldMirror(ctx, M3.x, M3.y, "NE", "M3", "right");
 
   // Helper: draw one complete directed beam path around the ring
   // segs = array of {x1,y1,x2,y2} segments
