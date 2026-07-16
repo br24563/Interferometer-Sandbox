@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Professional optical-engineering interferometer lab simulator covering Michelson, Mach–Zehnder, Fabry–Pérot, and Sagnac configurations with rigorous physics models.">
+  <meta name="description" content="Professional optical-engineering interferometer simulator — Michelson, Mach–Zehnder, Fabry–Pérot, and Sagnac interferometers with first-principles wave-optics models. No dependencies.">
+  <meta name="theme-color" content="#060e1a">
   <title>Interferometer Lab — Optical Engineering Simulator</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -25,19 +26,19 @@
 
     <!-- ===== Instrument Tabs ===== -->
     <nav class="instrument-tabs" role="tablist" aria-label="Interferometer selection">
-      <button class="tab active" role="tab" data-instrument="michelson" aria-selected="true" id="tab-michelson">
+      <button type="button" class="tab active" role="tab" data-instrument="michelson" aria-selected="true" id="tab-michelson">
         <span class="tab-name">Michelson</span>
         <span class="tab-sub">Round-trip · Mirror scan</span>
       </button>
-      <button class="tab" role="tab" data-instrument="machZehnder" aria-selected="false" id="tab-machZehnder">
+      <button type="button" class="tab" role="tab" data-instrument="machZehnder" aria-selected="false" id="tab-machZehnder">
         <span class="tab-name">Mach–Zehnder</span>
         <span class="tab-sub">Single-pass · Transmission</span>
       </button>
-      <button class="tab" role="tab" data-instrument="fabryPerot" aria-selected="false" id="tab-fabryPerot">
+      <button type="button" class="tab" role="tab" data-instrument="fabryPerot" aria-selected="false" id="tab-fabryPerot">
         <span class="tab-name">Fabry–Pérot</span>
         <span class="tab-sub">Etalon · High finesse</span>
       </button>
-      <button class="tab" role="tab" data-instrument="sagnac" aria-selected="false" id="tab-sagnac">
+      <button type="button" class="tab" role="tab" data-instrument="sagnac" aria-selected="false" id="tab-sagnac">
         <span class="tab-name">Sagnac</span>
         <span class="tab-sub">Ring · Rotation sensing</span>
       </button>
@@ -79,7 +80,7 @@
             </div>
             <div class="input-row">
               <input id="wavelength" type="range" min="380" max="780" value="632.8" step="0.1" aria-label="Wavelength slider">
-              <input id="wavelengthInput" type="number" min="380" max="780" value="632.8" step="0.1" class="numeric-input" aria-label="Wavelength numeric input">
+              <input id="wavelengthInput" type="number" min="380" max="780" value="632.8" step="0.1" class="numeric-input" inputmode="decimal" aria-label="Wavelength numeric input">
               <span class="unit">nm</span>
             </div>
             <p class="sublabel">The wavelength of light in vacuum (380–780 nm visible range). Determines the scale of interference fringes — shorter λ = finer fringes.</p>
@@ -92,7 +93,7 @@
             </div>
             <div class="input-row">
               <input id="coherence" type="range" min="0" max="100" value="100" step="0.5" aria-label="Coherence slider">
-              <input id="coherenceInput" type="number" min="0" max="100" value="100" step="0.1" class="numeric-input" aria-label="Coherence input">
+              <input id="coherenceInput" type="number" min="0" max="100" value="100" step="0.1" class="numeric-input" inputmode="decimal" aria-label="Coherence input">
               <span class="unit">%</span>
             </div>
             <p class="sublabel">How "pure" the light is. 100% = ideal single-frequency laser (maximum fringe contrast). Lower values simulate LED or multi-mode sources — fringes wash out. Technically this is the degree of temporal coherence.</p>
@@ -119,7 +120,7 @@
             </div>
             <div class="input-row">
               <input id="armA" type="range" min="0" max="100000" value="50000" step="0.001" aria-label="Arm A slider">
-              <input id="armAInput" type="number" min="0" max="100000" value="50000" step="0.001" class="numeric-input" aria-label="Arm A input">
+              <input id="armAInput" type="number" min="0" max="100000" value="50000" step="0.001" class="numeric-input" inputmode="decimal" aria-label="Arm A input">
               <span class="unit" id="armAUnit">nm</span>
             </div>
             <p class="sublabel" id="armAHint">The one-way geometric distance from the beamsplitter to mirror A. Changing this shifts the interference phase.</p>
@@ -132,7 +133,7 @@
             </div>
             <div class="input-row">
               <input id="armB" type="range" min="0" max="100000" value="50000.5" step="0.001" aria-label="Arm B slider">
-              <input id="armBInput" type="number" min="0" max="100000" value="50000.5" step="0.001" class="numeric-input" aria-label="Arm B input">
+              <input id="armBInput" type="number" min="0" max="100000" value="50000.5" step="0.001" class="numeric-input" inputmode="decimal" aria-label="Arm B input">
               <span class="unit" id="armBUnit">nm</span>
             </div>
             <p class="sublabel" id="armBHint">The one-way geometric distance from the beamsplitter to mirror B. The difference L_B − L_A drives the optical path difference (OPD).</p>
@@ -146,7 +147,7 @@
             </div>
             <div class="input-row">
               <input id="refractiveIndex" type="range" min="1.0" max="3.0" value="1.0" step="0.001" aria-label="Refractive index slider">
-              <input id="refractiveIndexInput" type="number" min="1.0" max="3.0" value="1.0" step="0.001" class="numeric-input" aria-label="Refractive index input">
+              <input id="refractiveIndexInput" type="number" min="1.0" max="3.0" value="1.0" step="0.001" class="numeric-input" inputmode="decimal" aria-label="Refractive index input">
               <span class="unit">—</span>
             </div>
             <p class="sublabel" id="refractiveNote">Optical path = geometric length × n (dimensionless). Air ≈ 1.000, glass ≈ 1.5, silicon ≈ 3.5. Inserting a material in the beam path lengthens the optical path without changing the physical path.</p>
@@ -160,7 +161,7 @@
             </div>
             <div class="input-row">
               <input id="reflectivity" type="range" min="0" max="99" value="90" step="0.1" aria-label="Reflectivity slider">
-              <input id="reflectivityInput" type="number" min="0" max="99" value="90" step="0.1" class="numeric-input" aria-label="Reflectivity input">
+              <input id="reflectivityInput" type="number" min="0" max="99" value="90" step="0.1" class="numeric-input" inputmode="decimal" aria-label="Reflectivity input">
               <span class="unit">%</span>
             </div>
             <p class="sublabel">Power reflectance of each cavity mirror (0–99%). Higher R gives sharper, narrower resonance peaks and higher finesse ℱ. Low R gives broad fringes like a two-beam interferometer.</p>
@@ -174,7 +175,7 @@
             </div>
             <div class="input-row">
               <input id="rotationRate" type="range" min="-1000" max="1000" value="0" step="0.1" aria-label="Rotation rate slider">
-              <input id="rotationRateInput" type="number" min="-1000" max="1000" value="0" step="0.1" class="numeric-input" aria-label="Rotation rate input">
+              <input id="rotationRateInput" type="number" min="-1000" max="1000" value="0" step="0.1" class="numeric-input" inputmode="decimal" aria-label="Rotation rate input">
               <span class="unit">°/s</span>
             </div>
             <p class="sublabel">The angular velocity of the platform rotating about the ring axis (positive = CCW when viewed from above). The Sagnac effect creates an OPD = 4AΩ/c between the two counter-propagating beams, making the device a gyroscope.</p>
@@ -188,7 +189,7 @@
             </div>
             <div class="input-row">
               <input id="fiberTurns" type="range" min="1" max="5000" value="100" step="1" aria-label="Fiber turns slider">
-              <input id="fiberTurnsInput" type="number" min="1" max="5000" value="100" step="1" class="numeric-input" aria-label="Fiber turns input">
+              <input id="fiberTurnsInput" type="number" min="1" max="5000" value="100" step="1" class="numeric-input" inputmode="numeric" aria-label="Fiber turns input">
               <span class="unit">turns</span>
             </div>
             <p class="sublabel">Number of fibre windings in the coil. Effective area = N × πr². Each additional turn linearly amplifies the Sagnac phase shift — real FOGs use 100–5000 turns to detect sub-°/hr rotations.</p>
@@ -202,7 +203,7 @@
             </div>
             <div class="input-row">
               <input id="fringeAperture" type="range" min="0.1" max="50" value="10" step="0.1" aria-label="Fringe aperture slider">
-              <input id="fringeApertureInput" type="number" min="0.1" max="50" value="10" step="0.1" class="numeric-input" aria-label="Fringe aperture input">
+              <input id="fringeApertureInput" type="number" min="0.1" max="50" value="10" step="0.1" class="numeric-input" inputmode="decimal" aria-label="Fringe aperture input">
               <span class="unit" id="fringeApertureUnit">mm</span>
             </div>
             <p class="sublabel" id="fringeApertureHint">Physical diameter of the observed field on the detector (for Michelson/MZI: mm; for Fabry–Pérot: half-angle in mrad). Larger values show more fringes across the aperture.</p>
@@ -216,7 +217,7 @@
             </div>
             <div class="input-row">
               <input id="tiltAngle" type="range" min="0" max="30" value="0" step="0.01" aria-label="Tilt angle slider">
-              <input id="tiltAngleInput" type="number" min="0" max="30" value="0" step="0.01" class="numeric-input" aria-label="Tilt angle input">
+              <input id="tiltAngleInput" type="number" min="0" max="30" value="0" step="0.01" class="numeric-input" inputmode="decimal" aria-label="Tilt angle input">
               <span class="unit">mrad</span>
             </div>
             <p class="sublabel">Tilting one mirror by θ (milliradians) converts the circular fringe pattern into parallel straight fringes with spacing Λ = λ/(2θ). At θ = 0 you see concentric bull's-eye rings (equal-inclination fringes). Even a tiny tilt in a real lab causes straight fringes.</p>
@@ -240,7 +241,7 @@
             </div>
             <div class="input-row">
               <input id="phaseOffset" type="range" min="0" max="360" value="0" step="0.1" aria-label="Phase offset slider">
-              <input id="phaseOffsetInput" type="number" min="0" max="360" value="0" step="0.1" class="numeric-input" aria-label="Phase offset input">
+              <input id="phaseOffsetInput" type="number" min="0" max="360" value="0" step="0.1" class="numeric-input" inputmode="decimal" aria-label="Phase offset input">
               <span class="unit">°</span>
             </div>
             <p class="sublabel">An additional phase bias φ₀ added to the computed interference phase — equivalent to a vernier electronic phase shifter on the detector. 0° = no bias; 180° flips bright ↔ dark fringes.</p>
@@ -249,9 +250,9 @@
 
         <!-- Action Buttons -->
         <div class="button-group">
-          <button class="button button-primary" id="reset">Reset Defaults</button>
-          <button class="button" id="quarterWave">+λ/4 on Arm B</button>
-          <button class="button" id="halfWave">+λ/2 on Arm B</button>
+          <button type="button" class="button button-primary" id="reset">Reset Defaults</button>
+          <button type="button" class="button" id="quarterWave">+λ/4 on Arm B</button>
+          <button type="button" class="button" id="halfWave">+λ/2 on Arm B</button>
         </div>
         <p class="sublabel" style="margin-top:8px;">+λ/4 shifts Arm B by one quarter-wavelength (flips bright↔dark in Michelson). +λ/2 completes one full fringe cycle (returns to same state).</p>
 

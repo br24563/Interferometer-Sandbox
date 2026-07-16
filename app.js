@@ -2,11 +2,38 @@
 // ============================================================
 //  Interferometer Lab — app.js
 //  Covers: Michelson, Mach–Zehnder, Fabry–Pérot, Sagnac
-//  All internal lengths in nanometres. Physics in SI where noted.
+//
+//  Unit convention
+//  ───────────────
+//  All internal lengths are in nanometres (nm).
+//  Angles in radians unless a variable name says _deg or _mrad.
+//  SI values (m, m², rad/s) are used only for display and for the
+//  Sagnac model which requires consistent SI throughout.
+//
+//  Rendering
+//  ─────────
+//  All canvas draws are batched through requestAnimationFrame so
+//  slider events never trigger more than one repaint per frame.
 // ============================================================
 
 const $ = id => document.getElementById(id);
 const TAU = 2 * Math.PI;
+
+// ── Shared drawing constants (avoid magic literals in draw functions) ──────
+const CLR_BG         = "#060e1a";
+const CLR_BEAM_DIM   = "#8ab4cc";   // dim annotation text on diagrams
+const CLR_CYAN       = "#3dd6f5";
+const CLR_GOLD       = "#f5c542";
+const CLR_ORANGE     = "#f5834a";
+const CLR_AXIS       = "#1f3d5c";
+const CLR_GRID       = "#0e2236";
+const CLR_MUTED      = "#7da4c0";
+const CLR_MUTED_DIM  = "#4a6e89";
+const CLR_ANNOT_BG   = "rgba(4,10,22,0.82)";
+const FONT_MONO_SM   = "9px monospace";
+const FONT_MONO_MD   = "10px monospace";
+const FONT_MONO_BOLD = "bold 10px monospace";
+const FONT_MONO_LG   = "bold 11px monospace";
 
 // ==================== Instrument Configuration ====================
 
@@ -309,7 +336,7 @@ function setArmUnit(nextUnit) {
     $(unitId).textContent = nextUnit === "um" ? "µm" : nextUnit;
   });
   activeLengthUnit = nextUnit;
-  render();
+  scheduleRender();
 }
 
 lengthUnit.addEventListener("change", () => setArmUnit(lengthUnit.value));
@@ -325,10 +352,9 @@ document.querySelectorAll(".tab").forEach(tab => {
     tab.classList.add("active");
     tab.setAttribute("aria-selected", "true");
     currentInstrument = tab.dataset.instrument;
-    // Apply per-instrument arm defaults when switching tabs
     applyArmDefaults(currentInstrument);
     updateInstrumentUI();
-    render();
+    scheduleRender();
   });
 });
 
@@ -424,10 +450,10 @@ const SYNC_PAIRS = [
 ];
 
 SYNC_PAIRS.forEach(([slider, input]) => {
-  $(slider).addEventListener("input", () => { syncFromSlider(slider, input); render(); });
-  $(input).addEventListener("input",  () => { syncFromInput(input, slider);  render(); });
-  $(input).addEventListener("change", () => { syncFromInput(input, slider);  render(); });
-  $(input).addEventListener("blur",   () =>   syncFromInput(input, slider));
+  $(slider).addEventListener("input",  () => { syncFromSlider(slider, input); scheduleRender(); });
+  $(input).addEventListener("input",   () => { syncFromInput(input, slider);  scheduleRender(); });
+  $(input).addEventListener("change",  () => { syncFromInput(input, slider);  scheduleRender(); });
+  $(input).addEventListener("blur",    () =>   syncFromInput(input, slider));
 });
 
 // Source preset — also marks the wavelength input as "preset-locked" so
@@ -438,7 +464,7 @@ sourcePreset.addEventListener("change", () => {
     controls.wavelength.value      = p.wavelength;
     controls.wavelengthInput.value = p.wavelength;
     $("sourcePresetBadge").textContent = p.label;
-    render();
+    scheduleRender();
   } else if (sourcePreset.value === "custom") {
     $("sourcePresetBadge").textContent = `Custom ${Number(controls.wavelength.value).toFixed(1)} nm`;
   }
@@ -476,19 +502,36 @@ function readInputs() {
 
 // ==================== Colour Mapping ====================
 
+/**
+ * Convert a vacuum wavelength (nm) to a perceptually-correct sRGB string.
+ * Uses the Bruton (1996) piecewise model with proper sRGB gamma encoding.
+ *
+ * The previous version applied the gamma exponent to already-linear values
+ * (double-encoding). This version:
+ *   1. Maps wavelength → linear-light R,G,B via the Bruton piecewise table.
+ *   2. Applies a smooth eye-sensitivity rolloff at the spectral limits.
+ *   3. Encodes to sRGB with a single gamma exponent (1/2.2).
+ */
 function spectrumColour(nm) {
   let r = 0, g = 0, b = 0;
   if      (nm < 380) { r = 0.5; b = 0.5; }
-  else if (nm < 440) { r = (440-nm)/60; b = 1; }
-  else if (nm < 490) { g = (nm-440)/50; b = 1; }
-  else if (nm < 510) { g = 1; b = (510-nm)/20; }
-  else if (nm < 580) { r = (nm-510)/70; g = 1; }
-  else if (nm < 645) { r = 1; g = (645-nm)/65; }
+  else if (nm < 440) { r = (440 - nm) / 60; b = 1; }
+  else if (nm < 490) { g = (nm - 440) / 50; b = 1; }
+  else if (nm < 510) { g = 1; b = (510 - nm) / 20; }
+  else if (nm < 580) { r = (nm - 510) / 70; g = 1; }
+  else if (nm < 645) { r = 1; g = (645 - nm) / 65; }
   else if (nm < 780) { r = 1; }
   else               { r = 0.8; b = 0.2; }
-  const gam = 0.8;
-  const s = v => Math.round(255 * Math.pow(Math.max(0, Math.min(1, v)), 1/gam));
-  return `rgb(${s(r)},${s(g)},${s(b)})`;
+
+  // Eye-sensitivity rolloff at spectral limits
+  let att = 1;
+  if      (nm < 420) att = 0.3 + 0.7 * (nm - 380) / 40;
+  else if (nm > 700) att = 0.3 + 0.7 * (780 - nm) / 80;
+  r *= att; g *= att; b *= att;
+
+  // sRGB gamma encoding
+  const enc = v => Math.round(255 * Math.pow(Math.max(0, Math.min(1, v)), 1 / 2.2));
+  return `rgb(${enc(r)},${enc(g)},${enc(b)})`;
 }
 
 const SPECTRUM_NAMES = [
@@ -505,22 +548,29 @@ function spectrumName(nm) {
 
 function setupCanvas(canvas) {
   const rect = canvas.getBoundingClientRect();
-  const dpr = devicePixelRatio || 1;
-  canvas.width  = rect.width  * dpr;
-  canvas.height = rect.height * dpr;
+  const dpr  = window.devicePixelRatio || 1;
+  canvas.width  = Math.round(rect.width  * dpr);
+  canvas.height = Math.round(rect.height * dpr);
   const ctx = canvas.getContext("2d");
   ctx.scale(dpr, dpr);
   return [ctx, rect.width, rect.height];
 }
 
+/** Format a phase in radians as "NNN.N° (N.NNNπ rad)". */
 function formatPhase(rad) {
-  const deg = (rad * 180 / Math.PI);
+  const deg  = rad * 180 / Math.PI;
   const norm = ((deg % 360) + 360) % 360;
   return `${norm.toFixed(1)}° (${(rad / Math.PI).toFixed(3)}π rad)`;
 }
 
+/**
+ * Format a numeric value using scientific notation for very large/small
+ * magnitudes, and fixed-precision otherwise.
+ */
 function fmtSci(v) {
-  if (Math.abs(v) < 1e-3 || Math.abs(v) >= 1e6) return v.toExponential(4);
+  const a = Math.abs(v);
+  if (a === 0)          return "0";
+  if (a < 1e-3 || a >= 1e6) return v.toExponential(4);
   return v.toPrecision(5);
 }
 
@@ -654,8 +704,10 @@ function drawSource(ctx, x, y, colour, label = "Laser") {
   ctx.restore();
 }
 
-// Compact annotation block — rendered in bottom-left with a subtle
-// semi-transparent backing so it never bleeds over optical components.
+/**
+ * Compact annotation block rendered in the bottom-left corner of a diagram
+ * canvas.  A semi-transparent backing ensures legibility over the schematic.
+ */
 function drawOPDAnnotation(ctx, model, inp) {
   const lines = [
     `OPD: ${displayLength(model.opd)}`,
@@ -664,13 +716,14 @@ function drawOPDAnnotation(ctx, model, inp) {
   ];
   const lh = 14, pad = 5, x = 8;
   const boxH = lines.length * lh + pad * 2;
-  const boxY = ctx.canvas.height / (window.devicePixelRatio || 1) - boxH - 6;
+  const dpr  = window.devicePixelRatio || 1;
+  const boxY = ctx.canvas.height / dpr - boxH - 6;
   ctx.save();
-  ctx.fillStyle = "rgba(4,10,22,0.78)";
-  ctx.fillRect(x - pad, boxY - 2, 190, boxH + 2);
-  ctx.fillStyle = "#3dd6f5";
-  ctx.font = "bold 10px monospace";
-  ctx.textAlign = "left";
+  ctx.fillStyle = CLR_ANNOT_BG;
+  ctx.fillRect(x - pad, boxY - 2, 192, boxH + 2);
+  ctx.fillStyle  = CLR_CYAN;
+  ctx.font       = FONT_MONO_BOLD;
+  ctx.textAlign  = "left";
   lines.forEach((l, i) => ctx.fillText(l, x, boxY + pad + i * lh));
   ctx.restore();
 }
@@ -684,26 +737,25 @@ function fmtLen(nm) {
   return `${(nm/1e9).toFixed(4)} m`;
 }
 
-// Helper: draw a dimension arrow between two points with a centred label.
+/** Dimension line: dashed line between two points with tick-marks and label. */
 function drawDimLine(ctx, x1, y1, x2, y2, label, offset = 0) {
   const dx = x2 - x1, dy = y2 - y1;
-  const len = Math.sqrt(dx*dx + dy*dy);
-  const nx = -dy/len * offset, ny = dx/len * offset;
+  const len = Math.sqrt(dx * dx + dy * dy) || 1;
+  const nx = -dy / len * offset, ny = dx / len * offset;
   ctx.save();
-  ctx.strokeStyle = "#4a6e89"; ctx.lineWidth = 0.9; ctx.setLineDash([3,3]);
+  ctx.strokeStyle = CLR_MUTED_DIM; ctx.lineWidth = 0.9; ctx.setLineDash([3, 3]);
   ctx.beginPath();
   ctx.moveTo(x1 + nx, y1 + ny);
   ctx.lineTo(x2 + nx, y2 + ny);
   ctx.stroke();
   ctx.setLineDash([]);
-  // Tick marks
-  const tx = -dy/len*4, ty = dx/len*4;
+  const tx = -dy / len * 4, ty = dx / len * 4;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(x1+nx-tx, y1+ny-ty); ctx.lineTo(x1+nx+tx, y1+ny+ty); ctx.stroke();
-  ctx.moveTo(x2+nx-tx, y2+ny-ty); ctx.lineTo(x2+nx+tx, y2+ny+ty); ctx.stroke();
-  ctx.fillStyle = "#8ab4cc"; ctx.font = "9px monospace"; ctx.textAlign = "center";
-  ctx.fillText(label, (x1+x2)/2+nx, (y1+y2)/2+ny - 4);
+  ctx.moveTo(x1 + nx - tx, y1 + ny - ty); ctx.lineTo(x1 + nx + tx, y1 + ny + ty); ctx.stroke();
+  ctx.moveTo(x2 + nx - tx, y2 + ny - ty); ctx.lineTo(x2 + nx + tx, y2 + ny + ty); ctx.stroke();
+  ctx.fillStyle = CLR_BEAM_DIM; ctx.font = FONT_MONO_SM; ctx.textAlign = "center";
+  ctx.fillText(label, (x1 + x2) / 2 + nx, (y1 + y2) / 2 + ny - 4);
   ctx.restore();
 }
 
@@ -731,7 +783,7 @@ function beamArrow(ctx, x, y, dx, dy, colour) {
 // ─────────────────────────────────────────────────────────────────────────────
 function drawMichelson(inp, model, colour) {
   const [ctx, w, h] = setupCanvas($("diagram"));
-  ctx.fillStyle = "#060e1a"; ctx.fillRect(0,0,w,h);
+  ctx.fillStyle = CLR_BG; ctx.fillRect(0, 0, w, h);
 
   // Key positions — independent of arm length values
   const bsX  = w * 0.44,  bsY  = h * 0.56;
@@ -750,13 +802,12 @@ function drawMichelson(inp, model, colour) {
   drawBeamSplitter(ctx, bsX, bsY, 14, "BS");
 
   // ── Arm A (vertical, upward) ──
-  // Incident beam offset −2 px left, return +2 px right — clearly separate
+  // Incident and return beams are offset by ±2 px so they are visually distinct.
   drawBeam(ctx, bsX - 2, bsY - 14, bsX - 2, maY + 3,  colour, 1.8, true);
   drawMirror(ctx, bsX, maY, true, "MA");
   drawBeam(ctx, bsX + 2, maY + 3,  bsX + 2, bsY - 14, colour, 1.6);
-  // Arm A length label, right of beam
   ctx.save();
-  ctx.fillStyle = "#8ab4cc"; ctx.font = "10px monospace"; ctx.textAlign = "left";
+  ctx.fillStyle = CLR_BEAM_DIM; ctx.font = FONT_MONO_MD; ctx.textAlign = "left";
   ctx.fillText(`L_A = ${fmtLen(inp.armA)}`, bsX + 10, (bsY + maY) / 2 + 4);
   ctx.restore();
 
@@ -764,17 +815,17 @@ function drawMichelson(inp, model, colour) {
   drawBeam(ctx, bsX + 14, bsY - 2, mbX - 3, bsY - 2,  colour, 1.8, true);
   drawMirror(ctx, mbX, bsY, false, "MB");
   drawBeam(ctx, mbX - 3, bsY + 2,  bsX + 14, bsY + 2, colour, 1.6);
-  // Arm B length label, above beam
   ctx.save();
-  ctx.fillStyle = "#8ab4cc"; ctx.font = "10px monospace"; ctx.textAlign = "center";
+  ctx.fillStyle = CLR_BEAM_DIM; ctx.font = FONT_MONO_MD; ctx.textAlign = "center";
   ctx.fillText(`L_B = ${fmtLen(inp.armB)}`, (bsX + mbX) / 2, bsY - 12);
   ctx.restore();
 
-  // ── Compensator plate (CP) — in arm B (horizontal) to equalise BS glass dispersion ──
-  // In the classic Michelson the source beam passes through BS glass once on the way to
-  // arm B; arm A sees the BS glass TWICE (go and return).  The CP in arm B makes both
-  // arms traverse the same glass thickness, equalising dispersion.
-  const cpMidX = bsX + armH * 0.38;  // roughly 40% along arm B
+  // ── Compensator plate (CP) in arm B ──
+  // In a Michelson, the source beam traverses the BS glass once on the way to
+  // arm B but twice (go + return) through arm A.  The CP equalises this glass
+  // thickness so both arms see the same dispersion — critical for white-light
+  // fringes and high-coherence metrology.
+  const cpMidX  = bsX + armH * 0.38;
   const cpHalfH = 10;
   ctx.save();
   ctx.strokeStyle = "#3a7fa8"; ctx.lineWidth = 4; ctx.globalAlpha = 0.55;
@@ -783,7 +834,7 @@ function drawMichelson(inp, model, colour) {
   ctx.lineTo(cpMidX + 3, bsY + cpHalfH);
   ctx.stroke();
   ctx.globalAlpha = 1;
-  ctx.fillStyle = "#3a7fa8"; ctx.font = "9px monospace"; ctx.textAlign = "center";
+  ctx.fillStyle = "#3a7fa8"; ctx.font = FONT_MONO_SM; ctx.textAlign = "center";
   ctx.fillText("CP", cpMidX, bsY - cpHalfH - 5);
   ctx.restore();
 
@@ -804,7 +855,7 @@ function drawMichelson(inp, model, colour) {
 // ─────────────────────────────────────────────────────────────────────────────
 function drawMachZehnder(inp, model, colour) {
   const [ctx, w, h] = setupCanvas($("diagram"));
-  ctx.fillStyle = "#060e1a"; ctx.fillRect(0,0,w,h);
+  ctx.fillStyle = CLR_BG; ctx.fillRect(0, 0, w, h);
 
   // Rectangular beam path corners
   const x1 = w * 0.27, x2 = w * 0.73;
@@ -833,30 +884,26 @@ function drawMachZehnder(inp, model, colour) {
 
   // ── Path labels ──
   ctx.save();
-  ctx.fillStyle = "#8ab4cc"; ctx.font = "10px monospace"; ctx.textAlign = "center";
-  // Arm A label below lower beam
+  ctx.fillStyle = CLR_BEAM_DIM; ctx.font = FONT_MONO_MD; ctx.textAlign = "center";
   ctx.fillText(`A: ${fmtLen(inp.armA)}`, (x1 + x2) / 2, yA + 18);
   ctx.restore();
 
   // ── Sample cell on arm B (upper horizontal) ──
-  const cx  = (x1 + x2) / 2;
-  const cW  = Math.min(50, (x2 - x1) * 0.28), cH = 14;
-  // Glass body
+  const cx = (x1 + x2) / 2;
+  const cW = Math.min(50, (x2 - x1) * 0.28), cH = 14;
   ctx.save();
   ctx.fillStyle   = "rgba(61,180,255,0.12)";
   ctx.strokeStyle = "#3db8f5"; ctx.lineWidth = 1.2;
-  ctx.fillRect(cx - cW/2, yB - cH, cW, cH);
-  ctx.strokeRect(cx - cW/2, yB - cH, cW, cH);
-  // Window lines
+  ctx.fillRect(cx - cW / 2, yB - cH, cW, cH);
+  ctx.strokeRect(cx - cW / 2, yB - cH, cW, cH);
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(cx - cW/2 + 4, yB - cH); ctx.lineTo(cx - cW/2 + 4, yB);
-  ctx.moveTo(cx + cW/2 - 4, yB - cH); ctx.lineTo(cx + cW/2 - 4, yB);
+  ctx.moveTo(cx - cW / 2 + 4, yB - cH); ctx.lineTo(cx - cW / 2 + 4, yB);
+  ctx.moveTo(cx + cW / 2 - 4, yB - cH); ctx.lineTo(cx + cW / 2 - 4, yB);
   ctx.stroke();
-  // n label above cell
-  ctx.fillStyle = "#3dd6f5"; ctx.font = "bold 9px monospace"; ctx.textAlign = "center";
+  ctx.fillStyle = CLR_CYAN; ctx.font = "bold 9px monospace"; ctx.textAlign = "center";
   ctx.fillText(`n = ${inp.n.toFixed(3)}`, cx, yB - cH - 5);
-  ctx.fillStyle = "#8ab4cc"; ctx.font = "10px monospace";
+  ctx.fillStyle = CLR_BEAM_DIM; ctx.font = FONT_MONO_MD;
   ctx.fillText(`B: ${fmtLen(inp.armB)}`, cx, yB - cH - 16);
   ctx.restore();
 
@@ -874,7 +921,7 @@ function drawMachZehnder(inp, model, colour) {
 // ─────────────────────────────────────────────────────────────────────────────
 function drawFabryPerot(inp, model, colour) {
   const [ctx, w, h] = setupCanvas($("diagram"));
-  ctx.fillStyle = "#060e1a"; ctx.fillRect(0,0,w,h);
+  ctx.fillStyle = CLR_BG; ctx.fillRect(0, 0, w, h);
 
   const R   = inp.reflectivity / 100;
   const yMid = h * 0.50;
@@ -902,11 +949,9 @@ function drawFabryPerot(inp, model, colour) {
     ctx.fillStyle = "#c0e8ff";
     ctx.fillRect(mx - mW/2, yMid - mH, mW, mH * 2);
     ctx.globalAlpha = 1;
-    // Label above
-    ctx.fillStyle = "#d0e8ff"; ctx.font = "bold 11px monospace"; ctx.textAlign = "center";
+    ctx.fillStyle = "#d0e8ff"; ctx.font = FONT_MONO_LG; ctx.textAlign = "center";
     ctx.fillText(lbl, mx, yMid - mH - 7);
-    // R value below
-    ctx.fillStyle = "#8ab4cc"; ctx.font = "9px monospace";
+    ctx.fillStyle = CLR_BEAM_DIM; ctx.font = FONT_MONO_SM;
     ctx.fillText(`R = ${(R*100).toFixed(0)}%`, mx, yMid + mH + 14);
     ctx.restore();
   }
@@ -967,16 +1012,16 @@ function drawFabryPerot(inp, model, colour) {
   // ── Cavity length dimension line (below mirrors) ──
   const dimY = yMid + mH + 20;
   ctx.save();
-  ctx.strokeStyle = "#4a6e89"; ctx.lineWidth = 0.9; ctx.setLineDash([4,3]);
+  ctx.strokeStyle = CLR_MUTED_DIM; ctx.lineWidth = 0.9; ctx.setLineDash([4, 3]);
   ctx.beginPath(); ctx.moveTo(m1x, dimY); ctx.lineTo(m2x, dimY); ctx.stroke();
   ctx.setLineDash([]);
   ctx.lineWidth = 1.2;
   ctx.beginPath();
-  ctx.moveTo(m1x, dimY-4); ctx.lineTo(m1x, dimY+4);
-  ctx.moveTo(m2x, dimY-4); ctx.lineTo(m2x, dimY+4);
+  ctx.moveTo(m1x, dimY - 4); ctx.lineTo(m1x, dimY + 4);
+  ctx.moveTo(m2x, dimY - 4); ctx.lineTo(m2x, dimY + 4);
   ctx.stroke();
-  ctx.fillStyle = "#8ab4cc"; ctx.font = "10px monospace"; ctx.textAlign = "center";
-  ctx.fillText(`L = ${fmtLen(inp.armA)}`, (m1x + m2x)/2, dimY + 14);
+  ctx.fillStyle = CLR_BEAM_DIM; ctx.font = FONT_MONO_MD; ctx.textAlign = "center";
+  ctx.fillText(`L = ${fmtLen(inp.armA)}`, (m1x + m2x) / 2, dimY + 14);
   ctx.restore();
 
   drawOPDAnnotation(ctx, model, inp);
@@ -996,7 +1041,7 @@ function drawFabryPerot(inp, model, colour) {
 // ─────────────────────────────────────────────────────────────────────────────
 function drawSagnac(inp, model, colour) {
   const [ctx, w, h] = setupCanvas($("diagram"));
-  ctx.fillStyle = "#060e1a"; ctx.fillRect(0,0,w,h);
+  ctx.fillStyle = CLR_BG; ctx.fillRect(0, 0, w, h);
 
   const omega = inp.rotationRate;
 
@@ -1070,50 +1115,49 @@ function drawSagnac(inp, model, colour) {
 
   // ── Direction labels ──
   ctx.save();
-  ctx.font = "bold 10px monospace"; ctx.textAlign = "center";
+  ctx.font = FONT_MONO_BOLD; ctx.textAlign = "center";
   ctx.fillStyle = colour; ctx.globalAlpha = 0.90;
   ctx.fillText("↺ CCW", ringCx - 38, ringCy - 10);
   ctx.globalAlpha = 0.42;
-  ctx.fillText("↻ CW", ringCx + 38, ringCy + 16);
+  ctx.fillText("↻ CW",  ringCx + 38, ringCy + 16);
   ctx.restore();
 
   // ── Rotation indicator ──
   const arrowR = Math.min(rm - lm, bm - tm) * 0.18;
   if (Math.abs(omega) > 0.01) {
-    const dir = omega > 0 ? 1 : -1;
+    const dir  = omega > 0 ? 1 : -1;
     ctx.save();
-    ctx.strokeStyle = "#f5834a"; ctx.lineWidth = 2.5;
+    ctx.strokeStyle = CLR_ORANGE; ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.arc(ringCx, ringCy, arrowR, -Math.PI/2, -Math.PI/2 + dir * TAU * 0.72);
+    ctx.arc(ringCx, ringCy, arrowR, -Math.PI / 2, -Math.PI / 2 + dir * TAU * 0.72);
     ctx.stroke();
-    // Triangle arrowhead
-    const aAng = -Math.PI/2 + dir * TAU * 0.72;
-    const ax = ringCx + arrowR * Math.cos(aAng);
-    const ay = ringCy + arrowR * Math.sin(aAng);
+    const aAng = -Math.PI / 2 + dir * TAU * 0.72;
+    const ax   = ringCx + arrowR * Math.cos(aAng);
+    const ay   = ringCy + arrowR * Math.sin(aAng);
     const tAng = aAng + dir * Math.PI / 2;
-    ctx.fillStyle = "#f5834a";
+    ctx.fillStyle = CLR_ORANGE;
     ctx.beginPath();
     ctx.moveTo(ax, ay);
     ctx.lineTo(ax - 8 * Math.cos(tAng - 0.4), ay - 8 * Math.sin(tAng - 0.4));
     ctx.lineTo(ax - 8 * Math.cos(tAng + 0.4), ay - 8 * Math.sin(tAng + 0.4));
     ctx.closePath(); ctx.fill();
-    ctx.fillStyle = "#f5834a"; ctx.font = "bold 10px monospace"; ctx.textAlign = "center";
+    ctx.fillStyle = CLR_ORANGE; ctx.font = FONT_MONO_BOLD; ctx.textAlign = "center";
     ctx.fillText(`Ω = ${omega.toFixed(2)}°/s`, ringCx, ringCy + arrowR + 16);
     ctx.restore();
   } else {
     ctx.save();
-    ctx.fillStyle = "#5a7e9a"; ctx.font = "10px monospace"; ctx.textAlign = "center";
+    ctx.fillStyle = "#5a7e9a"; ctx.font = FONT_MONO_MD; ctx.textAlign = "center";
     ctx.fillText("Ω = 0  (no Sagnac shift)", ringCx, ringCy + arrowR + 16);
     ctx.restore();
   }
 
-  // ── Ring area label (dashed half-diagonal) ──
+  // ── Ring radius label (dashed half-diagonal) ──
   ctx.save();
-  ctx.strokeStyle = "#4a6e89"; ctx.lineWidth = 0.8; ctx.setLineDash([3,4]);
+  ctx.strokeStyle = CLR_MUTED_DIM; ctx.lineWidth = 0.8; ctx.setLineDash([3, 4]);
   ctx.beginPath(); ctx.moveTo(ringCx, ringCy); ctx.lineTo(M2.x, M2.y); ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = "#8ab4cc"; ctx.font = "9px monospace"; ctx.textAlign = "center";
-  ctx.fillText(`r = ${fmtLen(inp.armA)}`, (ringCx + M2.x)/2 - 8, (ringCy + M2.y)/2 + 14);
+  ctx.fillStyle = CLR_BEAM_DIM; ctx.font = FONT_MONO_SM; ctx.textAlign = "center";
+  ctx.fillText(`r = ${fmtLen(inp.armA)}`, (ringCx + M2.x) / 2 - 8, (ringCy + M2.y) / 2 + 14);
   ctx.restore();
 
   drawOPDAnnotation(ctx, model, inp);
@@ -1297,85 +1341,74 @@ function makeImgData(ctx, PW, PH) {
   return { imgData, data };
 }
 
-// Draw a horizontal ruler along the bottom of the fringe view.
-// span_nm = total physical width of the canvas in nm.
-// unit: auto-selects µm or mm.
+/**
+ * Draw a calibrated horizontal ruler along the bottom of a fringe canvas.
+ * span_nm — total physical width of the view in nm.
+ * Auto-selects the most readable unit (nm / µm / mm) and a "nice" tick step.
+ */
 function drawRuler(ctx, W, H, span_nm, rulerH = 22) {
   const RULER_Y = H - rulerH;
-
-  // Semi-transparent ruler background
   ctx.fillStyle = "rgba(6,14,26,0.85)";
   ctx.fillRect(0, RULER_Y, W, rulerH);
 
-  // Choose a "nice" tick interval
+  // Nice tick interval
   const TICKS = 6;
   const rawStep_nm = span_nm / TICKS;
   const mag = Math.pow(10, Math.floor(Math.log10(rawStep_nm)));
-  const niceMuls = [1, 2, 5, 10];
   let step_nm = mag;
-  for (const m of niceMuls) {
-    const s = m * mag;
-    if (span_nm / s <= TICKS + 1) { step_nm = s; break; }
+  for (const m of [1, 2, 5, 10]) {
+    if (span_nm / (m * mag) <= TICKS + 1) { step_nm = m * mag; break; }
   }
 
-  // Unit labelling
+  // Auto unit
   let unitDiv, unitLabel;
-  if (span_nm < 5000) {           // < 5 µm  → nm
-    unitDiv = 1;        unitLabel = "nm";
-  } else if (span_nm < 5e6) {    // < 5 mm  → µm
-    unitDiv = 1e3;      unitLabel = "µm";
-  } else {                        //          → mm
-    unitDiv = 1e6;      unitLabel = "mm";
-  }
+  if      (span_nm < 5e3) { unitDiv = 1;   unitLabel = "nm"; }
+  else if (span_nm < 5e6) { unitDiv = 1e3; unitLabel = "µm"; }
+  else                    { unitDiv = 1e6; unitLabel = "mm"; }
 
-  ctx.fillStyle = "#3dd6f5";
-  ctx.font = "9px monospace";
-  ctx.textAlign = "left";
+  ctx.fillStyle = CLR_CYAN; ctx.font = FONT_MONO_SM; ctx.textAlign = "left";
   ctx.fillText(unitLabel, 3, H - 5);
 
-  // Ticks
-  ctx.strokeStyle = "#3dd6f5";
-  ctx.fillStyle   = "#7da4c0";
-  ctx.font = "9px monospace";
+  ctx.strokeStyle = CLR_CYAN;
+  ctx.fillStyle   = CLR_MUTED;
+  ctx.font = FONT_MONO_SM;
 
-  const firstTick = Math.ceil(0 / step_nm) * step_nm;
-  for (let x_nm = firstTick; x_nm <= span_nm; x_nm += step_nm) {
+  for (let x_nm = 0; x_nm <= span_nm + step_nm * 0.01; x_nm += step_nm) {
     const px = (x_nm / span_nm) * W;
-    ctx.beginPath();
-    ctx.lineWidth = 0.8;
-    ctx.moveTo(px, RULER_Y);
-    ctx.lineTo(px, RULER_Y + 5);
-    ctx.stroke();
-    const label = (x_nm / unitDiv).toPrecision(3).replace(/\.?0+$/, "");
+    ctx.beginPath(); ctx.lineWidth = 0.8;
+    ctx.moveTo(px, RULER_Y); ctx.lineTo(px, RULER_Y + 5); ctx.stroke();
     ctx.textAlign = "center";
-    ctx.fillText(label, px, H - 5);
+    ctx.fillText((x_nm / unitDiv).toPrecision(3).replace(/\.?0+$/, ""), px, H - 5);
   }
 
-  // Scale bar: one step_nm wide, labelled, in bottom-right corner
+  // Scale bar (bottom-right)
   const barW = (step_nm / span_nm) * W;
   const barX = W - barW - 8;
   const barY = RULER_Y + 10;
-  ctx.strokeStyle = "#3dd6f5"; ctx.lineWidth = 1.5;
+  ctx.strokeStyle = CLR_CYAN; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.moveTo(barX, barY); ctx.lineTo(barX + barW, barY); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(barX, barY - 3); ctx.lineTo(barX, barY + 3); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(barX,        barY - 3); ctx.lineTo(barX,        barY + 3); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(barX + barW, barY - 3); ctx.lineTo(barX + barW, barY + 3); ctx.stroke();
-  const barLabel = `${(step_nm / unitDiv).toPrecision(3).replace(/\.?0+$/, "")} ${unitLabel}`;
-  ctx.fillStyle = "#3dd6f5"; ctx.font = "bold 9px monospace"; ctx.textAlign = "center";
-  ctx.fillText(barLabel, barX + barW / 2, barY - 5);
+  ctx.fillStyle = CLR_CYAN; ctx.font = "bold 9px monospace"; ctx.textAlign = "center";
+  ctx.fillText(`${(step_nm / unitDiv).toPrecision(3).replace(/\.?0+$/, "")} ${unitLabel}`,
+               barX + barW / 2, barY - 5);
 }
 
-// Draw a colour-intensity legend (vertical gradient bar, right side) — optional.
+/** Render a small legend text line in the ruler area. */
 function fringeLegend(ctx, W, H, text, rulerH = 22) {
-  // Text overlaid on the ruler area (left side)
   ctx.fillStyle = "#e8f4ff";
   ctx.font = "bold 9px monospace";
   ctx.textAlign = "left";
   ctx.fillText(text, 28, H - rulerH + 13);
 }
 
+/**
+ * Parse an `rgb(r,g,b)` CSS string into a [r,g,b] number triple.
+ * Returns a fallback cyan if parsing fails (should never happen in practice).
+ */
 function parseColour(css) {
-  const m = css.match(/rgb\((\d+),(\d+),(\d+)\)/);
-  return m ? [+m[1], +m[2], +m[3]] : [0, 200, 255];
+  const m = css.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+  return m ? [+m[1], +m[2], +m[3]] : [61, 214, 245];
 }
 
 // ==================== Circular fringes (equal-inclination) ====================
@@ -1493,10 +1526,10 @@ function drawStraightFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
 
   if (Lambda_px < 1.5) {
     // Fringes unresolvable at this FOV/tilt — show notice
-    ctx.fillStyle = "#060e1a"; ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = "#7da4c0"; ctx.font = "11px monospace"; ctx.textAlign = "center";
-    ctx.fillText("Fringes too fine to resolve", W/2, imageH/2 - 8);
-    ctx.fillText("Reduce tilt or reduce FOV", W/2, imageH/2 + 8);
+    ctx.fillStyle = CLR_BG; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = CLR_MUTED; ctx.font = "11px monospace"; ctx.textAlign = "center";
+    ctx.fillText("Fringes too fine to resolve", W / 2, imageH / 2 - 8);
+    ctx.fillText("Reduce tilt or reduce FOV",  W / 2, imageH / 2 + 8);
   } else {
     for (let py = 0; py < PH_img; py++) {
       for (let px2 = 0; px2 < PW; px2++) {
@@ -1517,16 +1550,16 @@ function drawStraightFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
       const bracketY = imageH * 0.12;
       const x0 = W / 2 - Lambda_px / 2;
       const x1 = W / 2 + Lambda_px / 2;
-      ctx.strokeStyle = "rgba(245,197,66,0.8)"; ctx.lineWidth = 1;
+      ctx.strokeStyle = CLR_GOLD + "cc"; ctx.lineWidth = 1;
       ctx.setLineDash([]);
       ctx.beginPath(); ctx.moveTo(x0, bracketY); ctx.lineTo(x1, bracketY); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(x0, bracketY-4); ctx.lineTo(x0, bracketY+4); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(x1, bracketY-4); ctx.lineTo(x1, bracketY+4); ctx.stroke();
-      const Λ_str = Lambda_nm < 1000 ? Lambda_nm.toFixed(1)+"nm"
-                  : Lambda_nm < 1e6  ? (Lambda_nm/1000).toFixed(2)+"µm"
-                  :                    (Lambda_nm/1e6).toFixed(3)+"mm";
-      ctx.fillStyle = "#f5c542"; ctx.font = "bold 9px monospace"; ctx.textAlign = "center";
-      ctx.fillText(`Λ = ${Λ_str}`, (x0+x1)/2, bracketY - 8);
+      ctx.beginPath(); ctx.moveTo(x0, bracketY - 4); ctx.lineTo(x0, bracketY + 4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x1, bracketY - 4); ctx.lineTo(x1, bracketY + 4); ctx.stroke();
+      const Lambda_str = Lambda_nm < 1000 ? Lambda_nm.toFixed(1) + "nm"
+                       : Lambda_nm < 1e6  ? (Lambda_nm / 1000).toFixed(2) + "µm"
+                       :                    (Lambda_nm / 1e6).toFixed(3) + "mm";
+      ctx.fillStyle = CLR_GOLD; ctx.font = "bold 9px monospace"; ctx.textAlign = "center";
+      ctx.fillText(`Λ = ${Lambda_str}`, (x0 + x1) / 2, bracketY - 8);
     }
   }
 
@@ -1648,19 +1681,19 @@ function drawHaidingerFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
 function drawPlot(inp, model, colour) {
   const [ctx, w, h] = setupCanvas($("plot"));
   const box = { l: 46, r: 12, t: 14, b: 30 };
-  const pw = w - box.l - box.r;
-  const ph = h - box.t - box.b;
+  const pw  = w - box.l - box.r;
+  const ph  = h - box.t - box.b;
 
-  ctx.fillStyle = "#060e1a"; ctx.fillRect(0,0,w,h);
+  ctx.fillStyle = CLR_BG; ctx.fillRect(0, 0, w, h);
 
   // Axes
-  ctx.strokeStyle = "#1f3d5c"; ctx.lineWidth = 1;
+  ctx.strokeStyle = CLR_AXIS; ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(box.l, box.t); ctx.lineTo(box.l, box.t + ph);
   ctx.lineTo(box.l + pw, box.t + ph); ctx.stroke();
 
   // Grid
-  ctx.strokeStyle = "#0e2236"; ctx.lineWidth = 0.5;
+  ctx.strokeStyle = CLR_GRID; ctx.lineWidth = 0.5;
   for (let i = 0; i <= 4; i++) {
     const y = box.t + (i / 4) * ph;
     ctx.beginPath(); ctx.moveTo(box.l, y); ctx.lineTo(box.l + pw, y); ctx.stroke();
@@ -1670,8 +1703,8 @@ function drawPlot(inp, model, colour) {
     ctx.beginPath(); ctx.moveTo(x, box.t); ctx.lineTo(x, box.t + ph); ctx.stroke();
   }
 
-  const N = 320;
-  const gamma = inp.coherence / 100;
+  const N           = 400;     // increased sample count for smoother FP peaks
+  const gamma       = inp.coherence / 100;
   const phaseOffset = inp.phaseOffset * Math.PI / 180;
 
   // ── Sagnac: I vs Ω  —  FIXED axis ±180 °/s, curve shifts with SF ──────
@@ -1698,26 +1731,26 @@ function drawPlot(inp, model, colour) {
     }
     ctx.stroke();
 
-    // ── Earth rate: 15°/hr = 0.00417°/s ──
+    // ── Earth rate marker: 15°/hr = 4.167×10⁻³ °/s ──
     const earthO = 15 / 3600;
     const xEarth = oToX(earthO);
     ctx.save();
-    ctx.strokeStyle = "#f5c542"; ctx.lineWidth = 0.8; ctx.setLineDash([3, 3]);
+    ctx.strokeStyle = CLR_GOLD; ctx.lineWidth = 0.8; ctx.setLineDash([3, 3]);
     ctx.beginPath(); ctx.moveTo(xEarth, box.t); ctx.lineTo(xEarth, box.t + ph); ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = "#f5c542"; ctx.font = "8px monospace"; ctx.textAlign = "left";
+    ctx.fillStyle = CLR_GOLD; ctx.font = FONT_MONO_SM; ctx.textAlign = "left";
     ctx.fillText("Ω⊕", xEarth + 2, box.t + 10);
     ctx.restore();
 
-    // ── Current Ω marker ──
+    // ── Current Ω operating point marker ──
     const curO  = inp.rotationRate;
     const xCurO = oToX(curO);
     if (xCurO >= box.l && xCurO <= box.l + pw) {
       const I_cur = 0.5 * (1 + gamma * Math.cos(SF * curO + phaseOffset));
       const yCurO = box.t + ph * (1 - I_cur);
-      ctx.fillStyle = "#3dd6f5";
+      ctx.fillStyle = CLR_CYAN;
       ctx.beginPath(); ctx.arc(xCurO, yCurO, 4.5, 0, TAU); ctx.fill();
-      ctx.strokeStyle = "#3dd6f5"; ctx.lineWidth = 0.7; ctx.setLineDash([2, 3]);
+      ctx.strokeStyle = CLR_CYAN; ctx.lineWidth = 0.7; ctx.setLineDash([2, 3]);
       ctx.beginPath(); ctx.moveTo(xCurO, yCurO); ctx.lineTo(xCurO, box.t + ph); ctx.stroke();
       ctx.setLineDash([]);
     }
@@ -1726,21 +1759,21 @@ function drawPlot(inp, model, colour) {
     const sfStr = Math.abs(SF) < 1e-6 ? SF.toExponential(2)
                 : Math.abs(SF) < 0.01  ? SF.toExponential(3)
                 : SF.toFixed(5);
-    ctx.fillStyle = "#f5c542"; ctx.font = "8px monospace"; ctx.textAlign = "left";
+    ctx.fillStyle = CLR_GOLD; ctx.font = FONT_MONO_SM; ctx.textAlign = "left";
     ctx.fillText(`SF = ${sfStr} rad/(°/s)`, box.l + 2, box.t + 11);
 
     // ── Fixed x-axis ticks every 60°/s ──
-    ctx.fillStyle = "#7da4c0"; ctx.font = "9px monospace";
-    [-180,-120,-60,0,60,120,180].forEach(v => {
+    ctx.fillStyle = CLR_MUTED; ctx.font = FONT_MONO_SM;
+    [-180, -120, -60, 0, 60, 120, 180].forEach(v => {
       const xv = oToX(v);
-      ctx.strokeStyle = "#1f3d5c"; ctx.lineWidth = 0.5;
+      ctx.strokeStyle = CLR_AXIS; ctx.lineWidth = 0.5;
       ctx.beginPath(); ctx.moveTo(xv, box.t + ph); ctx.lineTo(xv, box.t + ph + 4); ctx.stroke();
       ctx.textAlign = "center";
       ctx.fillText(`${v}`, xv, box.t + ph + 15);
     });
 
     // ── Axis labels ──
-    ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace"; ctx.textAlign = "center";
+    ctx.fillStyle = CLR_MUTED; ctx.font = FONT_MONO_MD; ctx.textAlign = "center";
     ctx.fillText("Rotation rate  Ω  (°/s)", w / 2, h - 4);
     ctx.save();
     ctx.translate(12, h / 2); ctx.rotate(-Math.PI / 2);
@@ -1749,11 +1782,11 @@ function drawPlot(inp, model, colour) {
 
     // ── Y-axis ticks ──
     ctx.textAlign = "right";
-    [[0,"0"],[0.5,"½"],[1,"1"]].forEach(([v, lbl]) => {
+    [[0, "0"], [0.5, "½"], [1, "1"]].forEach(([v, lbl]) => {
       const yv = box.t + ph * (1 - v);
-      ctx.fillStyle = "#7da4c0"; ctx.font = "9px monospace";
+      ctx.fillStyle = CLR_MUTED; ctx.font = FONT_MONO_SM;
       ctx.fillText(lbl, box.l - 3, yv + 3);
-      ctx.strokeStyle = "#1f3d5c"; ctx.lineWidth = 0.5;
+      ctx.strokeStyle = CLR_AXIS; ctx.lineWidth = 0.5;
       ctx.beginPath(); ctx.moveTo(box.l - 3, yv); ctx.lineTo(box.l, yv); ctx.stroke();
     });
     return;
@@ -1780,87 +1813,108 @@ function drawPlot(inp, model, colour) {
     const fpSpan = fpMax - fpMin;
     const fpToX = (o) => box.l + ((o - fpMin) / fpSpan) * pw;
 
-    // Integer order tick marks (gold, at each mλ within window)
-    ctx.strokeStyle = "#f5c54240"; ctx.lineWidth = 0.8;
+    // ── Integer resonance order tick marks ──
+    ctx.strokeStyle = CLR_GOLD + "40"; ctx.lineWidth = 0.8;
     for (let m = Math.ceil(fpMin / lambda); m <= Math.floor(fpMax / lambda); m++) {
       const x = fpToX(m * lambda);
       ctx.beginPath(); ctx.moveTo(x, box.t + ph); ctx.lineTo(x, box.t + ph + 5); ctx.stroke();
     }
 
-    // Airy curve
-    ctx.strokeStyle = "#f5834a"; ctx.lineWidth = 1.8;
+    // ── Airy transmission curve ──
+    ctx.strokeStyle = CLR_ORANGE; ctx.lineWidth = 1.8;
     ctx.beginPath();
     for (let i = 0; i <= N; i++) {
-      const t      = i / N;
-      const opdVal = fpMin + t * fpSpan;
+      const opdVal = fpMin + (i / N) * fpSpan;
       const phase  = TAU * (opdVal / lambda) + phaseOffset;
       const raw    = 1 / (1 + F * Math.sin(phase / 2) ** 2);
+      // Blend ideal Airy with incoherent background proportional to (1−γ)
       const I      = raw * gamma + 0.5 * (1 - gamma);
       i === 0 ? ctx.moveTo(fpToX(opdVal), box.t + ph * (1 - I))
               : ctx.lineTo(fpToX(opdVal), box.t + ph * (1 - I));
     }
     ctx.stroke();
 
-    // Current OPD marker — actual position (no wrapping needed — it's always in window)
+    // ── Current OPD operating point marker ──
     const fpCx = fpToX(opd);
     const fpCy = box.t + ph * (1 - model.intensity);
-    ctx.fillStyle = "#3dd6f5";
+    ctx.fillStyle = CLR_CYAN;
     ctx.beginPath(); ctx.arc(fpCx, fpCy, 4.5, 0, TAU); ctx.fill();
-    ctx.strokeStyle = "#3dd6f5"; ctx.lineWidth = 0.7; ctx.setLineDash([2, 3]);
+    ctx.strokeStyle = CLR_CYAN; ctx.lineWidth = 0.7; ctx.setLineDash([2, 3]);
     ctx.beginPath(); ctx.moveTo(fpCx, fpCy); ctx.lineTo(fpCx, box.t + ph); ctx.stroke();
     ctx.setLineDash([]);
 
-    // Axis labels
-    ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace"; ctx.textAlign = "center";
+    // ── Axis labels ──
+    ctx.fillStyle = CLR_MUTED; ctx.font = FONT_MONO_MD; ctx.textAlign = "center";
     ctx.fillText("OPD (nm)", w / 2, h - 4);
     ctx.save();
     ctx.translate(12, h / 2); ctx.rotate(-Math.PI / 2);
-    ctx.fillText("I / I₀", 0, 0);
+    ctx.fillText("T / T₀", 0, 0);
     ctx.restore();
 
-    // X tick labels — show OPD values in nm/µm
-    ctx.fillStyle = "#7da4c0"; ctx.font = "9px monospace";
+    // ── X tick labels ──
+    ctx.fillStyle = CLR_MUTED; ctx.font = FONT_MONO_SM;
     for (let m = Math.ceil(fpMin / lambda); m <= Math.floor(fpMax / lambda); m++) {
       const nmVal = m * lambda;
-      const lbl   = nmVal < 1000 ? nmVal.toFixed(0) : (nmVal / 1e3).toFixed(2) + "k";
       ctx.textAlign = "center";
-      ctx.fillText(lbl, fpToX(nmVal), box.t + ph + 18);
+      ctx.fillText(nmVal < 1000 ? nmVal.toFixed(0) : (nmVal / 1e3).toFixed(2) + "k",
+                   fpToX(nmVal), box.t + ph + 18);
     }
-    // Resonance order + λ annotation
-    ctx.fillStyle = "#f5834a"; ctx.font = "8px monospace"; ctx.textAlign = "left";
+    ctx.fillStyle = CLR_ORANGE; ctx.font = FONT_MONO_SM; ctx.textAlign = "left";
     ctx.fillText(`m₀ = ${m0}  λ = ${lambda.toFixed(1)} nm`, box.l + 2, box.t + 11);
 
-    // Y ticks
+    // ── Y ticks ──
     ctx.textAlign = "right";
-    [[0,"0"],[0.5,"0.5"],[1,"1"]].forEach(([v, label]) => {
+    [[0, "0"], [0.5, "0.5"], [1, "1"]].forEach(([v, label]) => {
       const y = box.t + ph * (1 - v);
-      ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace";
+      ctx.fillStyle = CLR_MUTED; ctx.font = FONT_MONO_MD;
       ctx.fillText(label, box.l - 3, y + 3);
-      ctx.strokeStyle = "#1f3d5c"; ctx.lineWidth = 0.5;
+      ctx.strokeStyle = CLR_AXIS; ctx.lineWidth = 0.5;
       ctx.beginPath(); ctx.moveTo(box.l - 3, y); ctx.lineTo(box.l, y); ctx.stroke();
     });
     return;
   }
 
-  // ---- Michelson / MZI: fixed x-axis −4λ … +4λ, centred at OPD = 0 ----
-  // The axis is FIXED; the cyan marker scrolls to show current OPD position.
-  const xSpan   = 8 * lambda;    // nm
-  const xMin    = -4 * lambda;
-  const xMax    =  4 * lambda;
-  const nmToX   = (nm) => box.l + ((nm - xMin) / xSpan) * pw;
+  // ── Michelson / MZI: fixed x-axis −4λ … +4λ centred at OPD = 0 ──────────
+  // The axis window is fixed; the operating-point marker wraps to always be
+  // visible, demonstrating the periodic nature of the interference function.
+  //
+  // A faint coherence envelope ±½γ is drawn around the I = ½ baseline so the
+  // effect of reducing coherence is immediately visible.
+  const xSpan = 8 * lambda;
+  const xMin  = -4 * lambda;
+  const nmToX = (nm) => box.l + ((nm - xMin) / xSpan) * pw;
 
-  // Lambda tick marks at integer multiples
-  ctx.strokeStyle = "#f5c54240"; ctx.lineWidth = 0.8;
+  // ── Coherence envelope (drawn first, under the signal curve) ──
+  if (gamma < 0.999) {
+    const envTop = 0.5 * (1 + gamma);   // I_max
+    const envBot = 0.5 * (1 - gamma);   // I_min
+    ctx.fillStyle = "rgba(61,214,245,0.07)";
+    ctx.fillRect(box.l, box.t + ph * (1 - envTop),
+                 pw,    ph * (envTop - envBot));
+    // Dashed envelope lines
+    ctx.strokeStyle = "rgba(61,214,245,0.30)"; ctx.lineWidth = 0.8;
+    ctx.setLineDash([4, 4]);
+    [envTop, envBot].forEach(v => {
+      ctx.beginPath();
+      ctx.moveTo(box.l, box.t + ph * (1 - v));
+      ctx.lineTo(box.l + pw, box.t + ph * (1 - v));
+      ctx.stroke();
+    });
+    ctx.setLineDash([]);
+  }
+
+  // ── Lambda tick marks at integer multiples ──
+  ctx.strokeStyle = CLR_GOLD + "40"; ctx.lineWidth = 0.8;
   for (let i = -4; i <= 4; i++) {
     const x = nmToX(i * lambda);
     ctx.beginPath(); ctx.moveTo(x, box.t + ph); ctx.lineTo(x, box.t + ph + 5); ctx.stroke();
   }
 
+  // ── Interference signal curve ──
   ctx.strokeStyle = colour; ctx.lineWidth = 1.8;
   ctx.beginPath();
   for (let i = 0; i <= N; i++) {
-    const t      = i / N;
-    const opdVal = xMin + t * xSpan;
+    const opdVal = xMin + (i / N) * xSpan;
     const phase  = TAU * (opdVal / lambda) + phaseOffset;
     const I      = 0.5 * (1 + gamma * Math.cos(phase));
     i === 0 ? ctx.moveTo(nmToX(opdVal), box.t + ph * (1 - I))
@@ -1868,54 +1922,69 @@ function drawPlot(inp, model, colour) {
   }
   ctx.stroke();
 
-  // Current OPD marker — wraps onto fixed axis (modulo xSpan)
+  // ── Current OPD operating point marker ──
   const opdWrapped = ((model.opd - xMin) % xSpan + xSpan) % xSpan + xMin;
   const cx = nmToX(opdWrapped);
   const cy = box.t + ph * (1 - model.intensity);
-  ctx.fillStyle = "#3dd6f5";
+  ctx.fillStyle = CLR_CYAN;
   ctx.beginPath(); ctx.arc(cx, cy, 4.5, 0, TAU); ctx.fill();
-  ctx.strokeStyle = "#3dd6f5"; ctx.lineWidth = 0.7; ctx.setLineDash([2, 3]);
+  ctx.strokeStyle = CLR_CYAN; ctx.lineWidth = 0.7; ctx.setLineDash([2, 3]);
   ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, box.t + ph); ctx.stroke();
   ctx.setLineDash([]);
 
-  // Axis labels
-  ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace"; ctx.textAlign = "center";
+  // ── Axis labels ──
+  ctx.fillStyle = CLR_MUTED; ctx.font = FONT_MONO_MD; ctx.textAlign = "center";
   ctx.fillText("OPD (nm)", w / 2, h - 4);
   ctx.save();
   ctx.translate(12, h / 2); ctx.rotate(-Math.PI / 2);
   ctx.fillText("I / I₀", 0, 0);
   ctx.restore();
 
-  // X tick labels (nm values)
-  ctx.fillStyle = "#7da4c0"; ctx.font = "9px monospace";
+  // ── X tick labels ──
+  ctx.fillStyle = CLR_MUTED; ctx.font = FONT_MONO_SM;
   for (let i = -4; i <= 4; i++) {
-    if (i === 0) { ctx.textAlign = "center"; ctx.fillText("0", nmToX(0), box.t + ph + 18); continue; }
     const nm_val = i * lambda;
-    const lbl    = Math.abs(nm_val) < 1000 ? nm_val.toFixed(0) + "" : (nm_val / 1e3).toFixed(1) + "k";
+    const lbl    = i === 0 ? "0"
+                 : Math.abs(nm_val) < 1000 ? nm_val.toFixed(0)
+                 : (nm_val / 1e3).toFixed(1) + "k";
     ctx.textAlign = "center";
     ctx.fillText(lbl, nmToX(nm_val), box.t + ph + 18);
   }
-  // λ annotation top-left
-  ctx.fillStyle = "#f5c542"; ctx.font = "8px monospace"; ctx.textAlign = "left";
+  ctx.fillStyle = CLR_GOLD; ctx.font = FONT_MONO_SM; ctx.textAlign = "left";
   ctx.fillText(`λ = ${lambda.toFixed(1)} nm`, box.l + 2, box.t + 11);
 
-  // Y-axis ticks 0, 0.5, 1
+  // ── Y-axis ticks 0, 0.5, 1 ──
   ctx.textAlign = "right";
-  [[0,"0"],[0.5,"0.5"],[1,"1"]].forEach(([v, label]) => {
+  [[0, "0"], [0.5, "0.5"], [1, "1"]].forEach(([v, label]) => {
     const y = box.t + ph * (1 - v);
-    ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace";
+    ctx.fillStyle = CLR_MUTED; ctx.font = FONT_MONO_MD;
     ctx.fillText(label, box.l - 3, y + 3);
-    ctx.strokeStyle = "#1f3d5c"; ctx.lineWidth = 0.5;
+    ctx.strokeStyle = CLR_AXIS; ctx.lineWidth = 0.5;
     ctx.beginPath(); ctx.moveTo(box.l - 3, y); ctx.lineTo(box.l, y); ctx.stroke();
   });
 }
 
-// ==================== Render ====================
+// ==================== Render (rAF-throttled) ====================
+//
+// All UI event handlers call scheduleRender() instead of render() directly.
+// This coalesces multiple synchronous slider events (e.g. fast mouse sweeps)
+// into a single repaint per animation frame, keeping the UI responsive.
+
+let _rafPending = false;
+
+function scheduleRender() {
+  if (_rafPending) return;
+  _rafPending = true;
+  requestAnimationFrame(() => {
+    _rafPending = false;
+    render();
+  });
+}
 
 function render() {
-  const inp = readInputs();
-  const cfg = INSTRUMENTS[currentInstrument];
-  const model = cfg.model(inp);
+  const inp    = readInputs();
+  const cfg    = INSTRUMENTS[currentInstrument];
+  const model  = cfg.model(inp);
   const colour = spectrumColour(inp.wavelength);
 
   // Wavelength output
@@ -1963,16 +2032,31 @@ function render() {
 
   // Derived quantities
   $("phaseDiff").textContent = formatPhase(model.phase);
-  $("intensityFormula").innerHTML = `${model.intensity.toFixed(4)} = ½[1 + ${model.gamma.toFixed(3)}·cos(${(model.phase/Math.PI).toFixed(3)}π)]`;
+
+  // intensityFormula: show the appropriate equation for each instrument type
+  if (currentInstrument === "fabryPerot") {
+    const F = model.F !== undefined ? model.F.toFixed(2) : "—";
+    $("intensityFormula").innerHTML =
+      `${model.intensity.toFixed(4)} = T(Airy)  [F = ${F}, φ/π = ${(model.phase/Math.PI).toFixed(3)}]`;
+  } else {
+    $("intensityFormula").innerHTML =
+      `${model.intensity.toFixed(4)} = ½[1 + ${model.gamma.toFixed(3)}·cos(${(model.phase/Math.PI).toFixed(3)}π)]`;
+  }
+
   if (currentInstrument !== "sagnac") {
-    $("fringeOrder").textContent = `m = ${model.fringeOrder.toFixed(3)}  (fractional: ${(model.fringeOrder % 1).toFixed(4)})`;
+    $("fringeOrder").textContent = `m = ${model.fringeOrder.toFixed(3)}  (fractional: ${((model.fringeOrder % 1) + 1) % 1 .toFixed(4)})`;
   }
   $("visibility").textContent = `V = ${(model.visibility * 100).toFixed(2)}%`;
 
-  // Coherence length: ℓ_c ≈ λ² / Δλ; model as ℓ_c = λ / (1 - γ + 1e-9) for UI feedback
+  // Coherence length: ℓ_c = λ² / Δλ.
+  // For a Lorentzian lineshape, Δλ ≈ λ²/(π·ℓ_c), so ℓ_c = λ/(π(1−γ)).
+  // At γ→1 (ideal CW laser) the coherence length diverges to infinity.
   const gamma = inp.coherence / 100;
-  const lc_nm = gamma > 0.999 ? Infinity : inp.wavelength * gamma / (1 - gamma);
-  $("coherenceLength").textContent = lc_nm === Infinity ? "∞ (ideal laser)" : `${fmtSci(lc_nm)} nm`;
+  const lc_nm = gamma > 0.9999 ? Infinity
+              : inp.wavelength / (Math.PI * (1 - gamma));
+  $("coherenceLength").textContent = lc_nm === Infinity
+    ? "∞  (ideal single-frequency laser)"
+    : `${fmtSci(lc_nm)} nm`;
 
   // Spectrum colour
   $("spectrumColor").style.backgroundColor = colour;
@@ -2025,34 +2109,33 @@ $("reset").addEventListener("click", () => {
   controls.tiltAngleInput.value = DEFAULTS.tiltAngle;
   controls.fiberTurns.value      = DEFAULTS.fiberTurns;
   controls.fiberTurnsInput.value = DEFAULTS.fiberTurns;
-  // Re-apply per-instrument arm defaults (e.g. Sagnac 5 cm radius)
   applyArmDefaults(currentInstrument);
   sourcePreset.value = "hene";
   $("sourcePresetBadge").textContent = SOURCE_PRESETS.hene.label;
-  render();
+  scheduleRender();
 });
 
 function shiftArmB(multiplier) {
   const wavelengthNm = Number(controls.wavelength.value);
   const deltaDisplay = (wavelengthNm * multiplier) / unitScale[activeLengthUnit];
   const current = Number(controls.armB.value);
-  const next = current + deltaDisplay;
-  const max = Number(controls.armB.max);
-  if (next <= max && next >= 0) {
+  const next    = current + deltaDisplay;
+  const max     = Number(controls.armB.max);
+  if (next >= 0 && next <= max) {
     controls.armB.value      = next;
     controls.armBInput.value = next.toFixed(6);
-    render();
+    scheduleRender();
   }
 }
 
+/** Advance the electronic phase offset by `fractions` of a full cycle (360°). */
 function shiftPhaseOffset(fractions) {
-  // For Sagnac: shift the electronic phase offset by λ/4 or λ/2 equivalent
-  const delta = fractions * 360; // degrees (λ/4 = 90°, λ/2 = 180°)
+  const delta   = fractions * 360;
   const current = Number(controls.phaseOffset.value);
-  const next = ((current + delta) % 360 + 360) % 360;
+  const next    = ((current + delta) % 360 + 360) % 360;
   controls.phaseOffset.value      = next;
   controls.phaseOffsetInput.value = next.toFixed(1);
-  render();
+  scheduleRender();
 }
 
 $("quarterWave").addEventListener("click", () => {
@@ -2065,9 +2148,9 @@ $("halfWave").addEventListener("click", () => {
 });
 
 // ==================== Resize Observer ====================
-// Re-render all canvases when the page layout changes size.
+// Re-render all canvases whenever the page layout changes size.
 
-const _resizeObserver = new ResizeObserver(() => render());
+const _resizeObserver = new ResizeObserver(() => scheduleRender());
 ["diagram", "fringeCanvas", "plot"].forEach(id => {
   const el = $(id);
   if (el) _resizeObserver.observe(el);
