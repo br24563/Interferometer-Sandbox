@@ -167,7 +167,7 @@ const INSTRUMENTS = {
     showArmB: false,
     showRotation: true,
     showReflectivity: false,
-    quarterWaveText: "Ω → +λ/4 phase",
+    quarterWaveText: "+λ/4 phase offset",
     model: (inp) => {
       const lambda = inp.wavelength; // nm
       const c = 3e17;               // nm/s
@@ -470,6 +470,7 @@ function readInputs() {
     rotationRate:  Number(controls.rotationRate.value),
     tiltAngle:     Number(controls.tiltAngle.value), // mrad
     fiberTurns:    Math.max(1, Number(controls.fiberTurns.value)),
+    fringeAperture: Math.max(0.1, Number(controls.fringeAperture.value)),
   };
 }
 
@@ -535,35 +536,60 @@ function drawDiagram(inp, model, colour) {
   }
 }
 
-// Shared drawing primitives
+// ==================== Shared drawing primitives ====================
+
+// Beam-splitter: 45° line with label above-right.
 function drawBeamSplitter(ctx, x, y, size = 14, label = "BS") {
   ctx.save();
   ctx.strokeStyle = "#3dd6f5";
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 2.5;
   ctx.beginPath();
   ctx.moveTo(x - size, y + size);
   ctx.lineTo(x + size, y - size);
   ctx.stroke();
-  ctx.fillStyle = "#7da4c0";
-  ctx.font = "10px monospace";
+  // thin backing to improve visibility
+  ctx.strokeStyle = "rgba(61,214,245,0.18)";
+  ctx.lineWidth = 6;
+  ctx.stroke();
+  ctx.strokeStyle = "#3dd6f5"; ctx.lineWidth = 2.5;
+  ctx.stroke();
+  ctx.fillStyle = "#a8d8f0";
+  ctx.font = "bold 10px monospace";
   ctx.textAlign = "left";
-  ctx.fillText(label, x + size + 3, y - size + 4);
+  ctx.fillText(label, x + size + 4, y - size + 4);
   ctx.restore();
 }
 
+// Mirror: gold rectangle with hatched backing, label above (horiz) or to the right (vert).
+// horiz = true  → horizontal mirror face (beam hits it from above/below)
+// horiz = false → vertical mirror face (beam hits it from the side)
 function drawMirror(ctx, x, y, horiz = false, label = "M") {
+  const W = horiz ? 28 : 5, H = horiz ? 5 : 28;
+  const BACK = 5; // backing thickness
   ctx.save();
+  // Backing — placed on the *back* side of the face so it doesn't cover the face
+  ctx.fillStyle = "#2a1a00";
+  if (horiz) {
+    // Face is horizontal; backing goes ABOVE the face (lower y)
+    ctx.fillRect(x - W/2, y - H/2 - BACK, W, BACK);
+  } else {
+    // Face is vertical; backing goes to the RIGHT of the face (higher x)
+    ctx.fillRect(x + W/2, y - H/2, BACK, H);
+  }
+  // Mirror face
   ctx.fillStyle = "#f5c542";
-  if (horiz) ctx.fillRect(x - 16, y - 2, 32, 4);
-  else       ctx.fillRect(x - 2, y - 16, 4, 32);
-  ctx.fillStyle = "#7da4c0";
-  ctx.font = "10px monospace";
+  ctx.fillRect(x - W/2, y - H/2, W, H);
+  // Label
+  ctx.fillStyle = "#c0a030";
+  ctx.font = "bold 10px monospace";
   ctx.textAlign = "center";
-  ctx.fillText(label, x, horiz ? y - 8 : y - 20);
+  if (horiz) ctx.fillText(label, x, y - H/2 - BACK - 4);
+  else       ctx.fillText(label, x + W/2 + BACK + 8, y + 4);
   ctx.restore();
 }
 
-function drawBeam(ctx, x1, y1, x2, y2, colour, width = 1.5) {
+// Beam with optional arrowhead at the end.
+function drawBeam(ctx, x1, y1, x2, y2, colour, width = 1.8, arrow = false) {
   ctx.save();
   ctx.strokeStyle = colour;
   ctx.lineWidth = width;
@@ -572,373 +598,522 @@ function drawBeam(ctx, x1, y1, x2, y2, colour, width = 1.5) {
   ctx.moveTo(x1, y1);
   ctx.lineTo(x2, y2);
   ctx.stroke();
+  if (arrow) {
+    const ang = Math.atan2(y2 - y1, x2 - x1);
+    const aLen = 8, aW = 4;
+    ctx.fillStyle = colour;
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - aLen * Math.cos(ang - 0.4), y2 - aLen * Math.sin(ang - 0.4));
+    ctx.lineTo(x2 - aLen * Math.cos(ang + 0.4), y2 - aLen * Math.sin(ang + 0.4));
+    ctx.closePath(); ctx.fill();
+  }
   ctx.restore();
 }
 
+// Detector box — photodetector symbol.
 function drawDetector(ctx, x, y, colour) {
+  const S = 16;
   ctx.save();
   ctx.fillStyle = colour;
-  ctx.globalAlpha = 0.25;
-  ctx.fillRect(x - 14, y - 14, 28, 28);
+  ctx.globalAlpha = 0.20;
+  ctx.fillRect(x - S, y - S, S * 2, S * 2);
   ctx.globalAlpha = 1;
   ctx.strokeStyle = colour;
   ctx.lineWidth = 2;
-  ctx.strokeRect(x - 14, y - 14, 28, 28);
-  ctx.fillStyle = "#7da4c0";
-  ctx.font = "10px sans-serif";
+  ctx.strokeRect(x - S, y - S, S * 2, S * 2);
+  // triangle inside (photodiode symbol)
+  ctx.fillStyle = colour; ctx.globalAlpha = 0.55;
+  ctx.beginPath();
+  ctx.moveTo(x - 6, y - 7); ctx.lineTo(x + 7, y); ctx.lineTo(x - 6, y + 7);
+  ctx.closePath(); ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "#a8d8f0";
+  ctx.font = "bold 10px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("Det", x, y + 26);
+  ctx.fillText("D", x, y + S + 12);
   ctx.restore();
 }
 
+// Source: filled circle with label.
 function drawSource(ctx, x, y, colour, label = "Laser") {
   ctx.save();
-  ctx.fillStyle = colour;
-  ctx.globalAlpha = 0.7;
-  ctx.beginPath(); ctx.arc(x, y, 9, 0, TAU); ctx.fill();
+  // Glow
+  const grad = ctx.createRadialGradient(x, y, 2, x, y, 16);
+  grad.addColorStop(0, colour);
+  grad.addColorStop(1, "transparent");
+  ctx.fillStyle = grad; ctx.globalAlpha = 0.35;
+  ctx.beginPath(); ctx.arc(x, y, 16, 0, TAU); ctx.fill();
   ctx.globalAlpha = 1;
-  ctx.fillStyle = "#7da4c0";
-  ctx.font = "10px sans-serif";
+  ctx.fillStyle = colour;
+  ctx.beginPath(); ctx.arc(x, y, 8, 0, TAU); ctx.fill();
+  ctx.fillStyle = "#a8d8f0";
+  ctx.font = "bold 10px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(label, x, y + 21);
+  ctx.fillText(label, x, y + 22);
   ctx.restore();
 }
 
+// Compact annotation block — rendered in bottom-left with a subtle
+// semi-transparent backing so it never bleeds over optical components.
 function drawOPDAnnotation(ctx, model, inp) {
+  const lines = [
+    `OPD: ${displayLength(model.opd)}`,
+    `φ:   ${formatPhase(model.phase)}`,
+    `λ:   ${inp.wavelength.toFixed(1)} nm`,
+  ];
+  const lh = 14, pad = 5, x = 8;
+  const boxH = lines.length * lh + pad * 2;
+  const boxY = ctx.canvas.height / (window.devicePixelRatio || 1) - boxH - 6;
   ctx.save();
+  ctx.fillStyle = "rgba(4,10,22,0.78)";
+  ctx.fillRect(x - pad, boxY - 2, 190, boxH + 2);
   ctx.fillStyle = "#3dd6f5";
-  ctx.font = "bold 11px monospace";
+  ctx.font = "bold 10px monospace";
   ctx.textAlign = "left";
-  ctx.fillText(`OPD: ${displayLength(model.opd)}`, 10, 20);
-  ctx.fillText(`φ: ${formatPhase(model.phase)}`, 10, 34);
-  ctx.fillText(`λ: ${inp.wavelength.toFixed(1)} nm`, 10, 48);
+  lines.forEach((l, i) => ctx.fillText(l, x, boxY + pad + i * lh));
   ctx.restore();
 }
 
-// --- Michelson ---
-// Canonical layout: source enters from left → BS45° at centre → arm A goes UP,
-// arm B goes RIGHT. Detector exits DOWNWARD from BS (perpendicular to source).
-// Both return beams drawn offset slightly to show the separate paths clearly.
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper: format nm value for diagram labels — avoids "50000.000 nm"
+function fmtLen(nm) {
+  if (Math.abs(nm) < 1e3)       return `${nm.toFixed(0)} nm`;
+  if (Math.abs(nm) < 1e6)       return `${(nm/1e3).toFixed(2)} µm`;
+  if (Math.abs(nm) < 1e9)       return `${(nm/1e6).toFixed(3)} mm`;
+  return `${(nm/1e9).toFixed(4)} m`;
+}
+
+// Helper: draw a dimension arrow between two points with a centred label.
+function drawDimLine(ctx, x1, y1, x2, y2, label, offset = 0) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.sqrt(dx*dx + dy*dy);
+  const nx = -dy/len * offset, ny = dx/len * offset;
+  ctx.save();
+  ctx.strokeStyle = "#4a6e89"; ctx.lineWidth = 0.9; ctx.setLineDash([3,3]);
+  ctx.beginPath();
+  ctx.moveTo(x1 + nx, y1 + ny);
+  ctx.lineTo(x2 + nx, y2 + ny);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // Tick marks
+  const tx = -dy/len*4, ty = dx/len*4;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x1+nx-tx, y1+ny-ty); ctx.lineTo(x1+nx+tx, y1+ny+ty); ctx.stroke();
+  ctx.moveTo(x2+nx-tx, y2+ny-ty); ctx.lineTo(x2+nx+tx, y2+ny+ty); ctx.stroke();
+  ctx.fillStyle = "#8ab4cc"; ctx.font = "9px monospace"; ctx.textAlign = "center";
+  ctx.fillText(label, (x1+x2)/2+nx, (y1+y2)/2+ny - 4);
+  ctx.restore();
+}
+
+// Helper: draw a beam-direction arrowhead at (x,y) pointing in direction (dx,dy).
+function beamArrow(ctx, x, y, dx, dy, colour) {
+  const len = Math.sqrt(dx*dx+dy*dy) || 1;
+  const ux = dx/len, uy = dy/len;
+  const s = 7;
+  ctx.save();
+  ctx.fillStyle = colour;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x - s*ux + s*0.4*(-uy), y - s*uy + s*0.4*ux);
+  ctx.lineTo(x - s*ux - s*0.4*(-uy), y - s*uy - s*0.4*ux);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MICHELSON INTERFEROMETER
+// Classic layout: laser enters from left, 50/50 BS at centre splits beam into
+// vertical arm (M_A, up) and horizontal arm (M_B, right). Both beams return
+// and recombine at BS; output exits downward to detector. A compensator plate
+// (CP) in arm B equalises glass thickness.
+// ─────────────────────────────────────────────────────────────────────────────
 function drawMichelson(inp, model, colour) {
   const [ctx, w, h] = setupCanvas($("diagram"));
   ctx.fillStyle = "#060e1a"; ctx.fillRect(0,0,w,h);
 
-  // Fixed layout coordinates — proportional to canvas, not to arm lengths
-  const bsX = w * 0.46, bsY = h * 0.55;
-  const armLen = Math.min(w * 0.30, h * 0.32); // fixed display arm length
+  // Key positions — independent of arm length values
+  const bsX  = w * 0.44,  bsY  = h * 0.56;
+  const armV = h * 0.34;   // vertical arm display length
+  const armH = w * 0.30;   // horizontal arm display length
+  const srcX = w * 0.10,   srcY = bsY;
+  const maY  = bsY - armV; // mirror A y
+  const mbX  = bsX + armH; // mirror B x
+  const detY = Math.min(bsY + h * 0.22, h - 24);
 
-  // Source → BS (horizontal from left)
-  drawSource(ctx, w * 0.10, bsY, colour);
-  drawBeam(ctx, w * 0.14, bsY, bsX - 14, bsY, colour);
+  // ── Source ──
+  drawSource(ctx, srcX, srcY, colour);
+  drawBeam(ctx, srcX + 10, srcY, bsX - 14, srcY, colour, 1.8, true);
 
-  // BS
+  // ── Beamsplitter ──
   drawBeamSplitter(ctx, bsX, bsY, 14, "BS");
 
-  // Arm A: vertical upward
-  const maY = bsY - armLen;
-  // Forward beam slightly left of centre
-  drawBeam(ctx, bsX - 2, bsY - 14, bsX - 2, maY, colour);
-  drawMirror(ctx, bsX, maY, true, `M_A`);
-  // Return beam slightly right of centre
-  drawBeam(ctx, bsX + 2, maY, bsX + 2, bsY - 14, colour);
-  // Arm A label
+  // ── Arm A (vertical, upward) ──
+  // Incident beam offset −2 px left, return +2 px right — clearly separate
+  drawBeam(ctx, bsX - 2, bsY - 14, bsX - 2, maY + 3,  colour, 1.8, true);
+  drawMirror(ctx, bsX, maY, true, "MA");
+  drawBeam(ctx, bsX + 2, maY + 3,  bsX + 2, bsY - 14, colour, 1.6);
+  // Arm A length label, right of beam
   ctx.save();
-  ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace"; ctx.textAlign = "left";
-  ctx.fillText(displayLength(inp.armA), bsX + 8, (bsY + maY) / 2 + 4);
+  ctx.fillStyle = "#8ab4cc"; ctx.font = "10px monospace"; ctx.textAlign = "left";
+  ctx.fillText(`L_A = ${fmtLen(inp.armA)}`, bsX + 10, (bsY + maY) / 2 + 4);
   ctx.restore();
 
-  // Arm B: horizontal rightward
-  const mbX = bsX + armLen;
-  drawBeam(ctx, bsX + 14, bsY - 2, mbX, bsY - 2, colour);
-  drawMirror(ctx, mbX, bsY, false, `M_B`);
-  drawBeam(ctx, mbX, bsY + 2, bsX + 14, bsY + 2, colour);
+  // ── Arm B (horizontal, rightward) ──
+  drawBeam(ctx, bsX + 14, bsY - 2, mbX - 3, bsY - 2,  colour, 1.8, true);
+  drawMirror(ctx, mbX, bsY, false, "MB");
+  drawBeam(ctx, mbX - 3, bsY + 2,  bsX + 14, bsY + 2, colour, 1.6);
+  // Arm B length label, above beam
   ctx.save();
-  ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace"; ctx.textAlign = "center";
-  ctx.fillText(displayLength(inp.armB), (bsX + mbX) / 2, bsY - 10);
+  ctx.fillStyle = "#8ab4cc"; ctx.font = "10px monospace"; ctx.textAlign = "center";
+  ctx.fillText(`L_B = ${fmtLen(inp.armB)}`, (bsX + mbX) / 2, bsY - 12);
   ctx.restore();
 
-  // Recombined output → detector downward
-  const detY = bsY + h * 0.20;
-  drawBeam(ctx, bsX, bsY + 14, bsX, detY, colour);
+  // ── Compensator plate (CP) — in arm B (horizontal) to equalise BS glass dispersion ──
+  // In the classic Michelson the source beam passes through BS glass once on the way to
+  // arm B; arm A sees the BS glass TWICE (go and return).  The CP in arm B makes both
+  // arms traverse the same glass thickness, equalising dispersion.
+  const cpMidX = bsX + armH * 0.38;  // roughly 40% along arm B
+  const cpHalfH = 10;
+  ctx.save();
+  ctx.strokeStyle = "#3a7fa8"; ctx.lineWidth = 4; ctx.globalAlpha = 0.55;
+  ctx.beginPath();
+  ctx.moveTo(cpMidX - 3, bsY - cpHalfH);
+  ctx.lineTo(cpMidX + 3, bsY + cpHalfH);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "#3a7fa8"; ctx.font = "9px monospace"; ctx.textAlign = "center";
+  ctx.fillText("CP", cpMidX, bsY - cpHalfH - 5);
+  ctx.restore();
+
+  // ── Output → Detector (downward) ──
+  drawBeam(ctx, bsX, bsY + 14, bsX, detY - 16, colour, 1.8, true);
   drawDetector(ctx, bsX, detY, colour);
-
-  // Compensator plate label (realistic: Michelson uses one to equalise glass path)
-  ctx.save();
-  ctx.fillStyle = "#4a8fa8"; ctx.font = "9px monospace"; ctx.textAlign = "left";
-  ctx.fillText("CP", bsX + 16, bsY + 16);
-  ctx.restore();
 
   drawOPDAnnotation(ctx, model, inp);
 }
 
-// --- Mach–Zehnder ---
-// Correct topology: source → BS1 → two parallel arms → BS2 → detector.
-// Arm A (lower, reference) goes BS1 → M1(bottom-right) → BS2.
-// Arm B (upper, sample)   goes BS1 → M2(top-left)     → BS2.
-// Both beamsplitters are 45° oriented. Detector exits sideways from BS2.
+// ─────────────────────────────────────────────────────────────────────────────
+// MACH–ZEHNDER INTERFEROMETER
+// Rectangular layout: laser → BS1 (bottom-left) splits into:
+//   Arm A (reference, lower): BS1 → M1(bottom-right) → BS2
+//   Arm B (sample, upper):    BS1 → M2(top-left)     → BS2
+// BS2 (top-right) recombines; detector exits rightward from BS2.
+// Sample cell drawn on arm B with refractive index n annotation.
+// ─────────────────────────────────────────────────────────────────────────────
 function drawMachZehnder(inp, model, colour) {
   const [ctx, w, h] = setupCanvas($("diagram"));
   ctx.fillStyle = "#060e1a"; ctx.fillRect(0,0,w,h);
 
-  // Layout: rectangular beam path
-  const x1 = w * 0.26, x2 = w * 0.74;   // BS1 and BS2 x positions
-  const yA = h * 0.68, yB = h * 0.28;    // lower (A) and upper (B) y positions
+  // Rectangular beam path corners
+  const x1 = w * 0.27, x2 = w * 0.73;
+  const yA  = h * 0.70, yB = h * 0.26;
+  const bs  = 13; // beamsplitter size
 
-  // Source → BS1
-  drawSource(ctx, w * 0.08, yA, colour);
-  drawBeam(ctx, w * 0.12, yA, x1 - 13, yA, colour);
+  // ── Source → BS1 ──
+  drawSource(ctx, w * 0.09, yA, colour);
+  drawBeam(ctx, w * 0.13, yA, x1 - bs, yA, colour, 1.8, true);
+  drawBeamSplitter(ctx, x1, yA, bs, "BS1");
 
-  // BS1 (at bottom-left corner)
-  drawBeamSplitter(ctx, x1, yA, 13, "BS1");
-
-  // ----- ARM A (reference, lower horizontal) -----
-  // BS1 → M1 (bottom-right corner mirror, vertical) → BS2
-  drawBeam(ctx, x1 + 13, yA, x2 - 5, yA, colour);        // lower horizontal
-  // M1: flat vertical mirror at bottom-right, deflects beam upward
+  // ── Arm A: lower horizontal → M1 → right vertical up → BS2 ──
+  drawBeam(ctx, x1 + bs, yA,  x2 - 4, yA,      colour, 1.8, true);  // lower horiz
   drawMirror(ctx, x2, yA, false, "M1");
-  drawBeam(ctx, x2, yA - 5, x2, yB + 13, colour);          // right vertical up to BS2
+  drawBeam(ctx, x2, yA - 4,   x2, yB + bs,      colour, 1.8, true);  // right vert up
 
-  // ----- ARM B (sample, upper horizontal) -----
-  // BS1 deflects upward → M2 (top-left corner mirror, horizontal) → BS2
-  drawBeam(ctx, x1, yA - 13, x1, yB + 5, colour);          // left vertical up
-  // M2: flat horizontal mirror at top-left, deflects beam rightward
+  // ── Arm B: left vertical up → M2 → upper horizontal → BS2 ──
+  drawBeam(ctx, x1, yA - bs,  x1, yB + 4,        colour, 1.8, true);  // left vert up
   drawMirror(ctx, x1, yB, true, "M2");
-  drawBeam(ctx, x1 + 5, yB, x2 - 13, yB, colour);          // upper horizontal
+  drawBeam(ctx, x1 + 4, yB,   x2 - bs, yB,       colour, 1.8, true);  // upper horiz
 
-  // BS2 (at top-right corner)
-  drawBeamSplitter(ctx, x2, yB, 13, "BS2");
+  // ── BS2 → output → detector ──
+  drawBeamSplitter(ctx, x2, yB, bs, "BS2");
+  drawBeam(ctx, x2 + bs, yB, x2 + w * 0.11, yB, colour, 1.8, true);
+  drawDetector(ctx, x2 + w * 0.11, yB, colour);
 
-  // Output → detector (rightward from BS2)
-  drawBeam(ctx, x2 + 13, yB, x2 + w * 0.12, yB, colour);
-  drawDetector(ctx, x2 + w * 0.12, yB, colour);
-
-  // Path labels
+  // ── Path labels ──
   ctx.save();
-  ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace"; ctx.textAlign = "center";
-  ctx.fillText(`A: ${displayLength(inp.armA)}`, (x1 + x2) / 2, yA + 16);
-  ctx.fillText(`B: ${displayLength(inp.armB)}`, (x1 + x2) / 2, yB - 8);
-  // Sample cell indicator on arm B
-  const midBx = (x1 + x2) / 2;
-  ctx.strokeStyle = "#3dd6f5"; ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
-  ctx.strokeRect(midBx - 18, yB - 12, 36, 10);
-  ctx.setLineDash([]);
-  ctx.fillStyle = "#3dd6f5"; ctx.font = "9px monospace";
-  ctx.fillText(`n=${inp.n.toFixed(3)}`, midBx, yB - 14);
+  ctx.fillStyle = "#8ab4cc"; ctx.font = "10px monospace"; ctx.textAlign = "center";
+  // Arm A label below lower beam
+  ctx.fillText(`A: ${fmtLen(inp.armA)}`, (x1 + x2) / 2, yA + 18);
+  ctx.restore();
+
+  // ── Sample cell on arm B (upper horizontal) ──
+  const cx  = (x1 + x2) / 2;
+  const cW  = Math.min(50, (x2 - x1) * 0.28), cH = 14;
+  // Glass body
+  ctx.save();
+  ctx.fillStyle   = "rgba(61,180,255,0.12)";
+  ctx.strokeStyle = "#3db8f5"; ctx.lineWidth = 1.2;
+  ctx.fillRect(cx - cW/2, yB - cH, cW, cH);
+  ctx.strokeRect(cx - cW/2, yB - cH, cW, cH);
+  // Window lines
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - cW/2 + 4, yB - cH); ctx.lineTo(cx - cW/2 + 4, yB);
+  ctx.moveTo(cx + cW/2 - 4, yB - cH); ctx.lineTo(cx + cW/2 - 4, yB);
+  ctx.stroke();
+  // n label above cell
+  ctx.fillStyle = "#3dd6f5"; ctx.font = "bold 9px monospace"; ctx.textAlign = "center";
+  ctx.fillText(`n = ${inp.n.toFixed(3)}`, cx, yB - cH - 5);
+  ctx.fillStyle = "#8ab4cc"; ctx.font = "10px monospace";
+  ctx.fillText(`B: ${fmtLen(inp.armB)}`, cx, yB - cH - 16);
   ctx.restore();
 
   drawOPDAnnotation(ctx, model, inp);
 }
 
-// --- Fabry–Pérot ---
-// Shows the etalon with properly staggered multi-bounce beams that zig-zag
-// between M1 and M2, dimming with R^k. A reflected beam exits back toward
-// source from M1, and transmitted beams exit from M2.
+// ─────────────────────────────────────────────────────────────────────────────
+// FABRY–PÉROT ETALON
+// Two parallel partial-reflector mirrors (M1, M2). Input beam enters, partly
+// transmits through M1, bounces back and forth N times. Each round-trip the
+// field intensity drops by R². Transmitted beams exit from M2 and are
+// collected by the detector. Back-reflection from M1 shown as dashed.
+// Beams drawn as a clean fan of parallel horizontal passes, not diagonal —
+// correctly representing the paraxial standing-wave cavity.
+// ─────────────────────────────────────────────────────────────────────────────
 function drawFabryPerot(inp, model, colour) {
   const [ctx, w, h] = setupCanvas($("diagram"));
   ctx.fillStyle = "#060e1a"; ctx.fillRect(0,0,w,h);
 
+  const R   = inp.reflectivity / 100;
   const yMid = h * 0.50;
   const m1x  = w * 0.32;
   const m2x  = w * 0.68;
-  const R    = inp.reflectivity / 100;
-  const mH   = h * 0.32; // mirror half-height
+  const mH   = h * 0.36;        // mirror half-height
+  const mW   = 6;               // mirror width
 
-  // Source
-  drawSource(ctx, w * 0.08, yMid, colour);
-  drawBeam(ctx, w * 0.12, yMid, m1x - 4, yMid, colour);
+  // ── Source ──
+  drawSource(ctx, w * 0.09, yMid, colour);
+  drawBeam(ctx, w * 0.13, yMid, m1x - mW, yMid, colour, 1.8, true);
 
-  // Helper: draw partial-reflector mirror rectangle with cyan overlay
-  function drawPRM(x, label) {
+  // ── Partial-reflector mirrors ──
+  // Draw a gold slab with a translucent layer whose opacity scales with R
+  function drawPRM(mx, lbl) {
     ctx.save();
-    ctx.fillStyle = "#f5c542";
-    ctx.fillRect(x - 4, yMid - mH, 8, mH * 2);
-    ctx.globalAlpha = 0.35 + 0.3 * R; // more opaque = higher R
-    ctx.fillStyle = "#3dd6f5";
-    ctx.fillRect(x - 4, yMid - mH, 8, mH * 2);
+    // Dark backing (hatching effect)
+    ctx.fillStyle = "#1a1000";
+    ctx.fillRect(mx + mW/2, yMid - mH, mW, mH * 2);
+    // Gold reflective face
+    ctx.fillStyle = "#e8b830";
+    ctx.fillRect(mx - mW/2, yMid - mH, mW, mH * 2);
+    // Translucency overlay: fraction (1-R) let through visually
+    ctx.globalAlpha = 0.15 + 0.55 * R;
+    ctx.fillStyle = "#c0e8ff";
+    ctx.fillRect(mx - mW/2, yMid - mH, mW, mH * 2);
     ctx.globalAlpha = 1;
-    ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace"; ctx.textAlign = "center";
-    ctx.fillText(label, x, yMid - mH - 6);
-    ctx.fillText(`R=${(R * 100).toFixed(0)}%`, x, yMid + mH + 14);
+    // Label above
+    ctx.fillStyle = "#d0e8ff"; ctx.font = "bold 11px monospace"; ctx.textAlign = "center";
+    ctx.fillText(lbl, mx, yMid - mH - 7);
+    // R value below
+    ctx.fillStyle = "#8ab4cc"; ctx.font = "9px monospace";
+    ctx.fillText(`R = ${(R*100).toFixed(0)}%`, mx, yMid + mH + 14);
     ctx.restore();
   }
   drawPRM(m1x, "M1");
   drawPRM(m2x, "M2");
 
-  // Input beam hits M1: portion reflected back, portion transmitted into cavity
-  // Show back-reflection from M1 (goes left, fades)
+  // ── Back-reflection from M1 (dashed, fades toward source) ──
   ctx.save();
-  ctx.strokeStyle = colour; ctx.globalAlpha = R * 0.7; ctx.lineWidth = 1.2;
-  ctx.setLineDash([4, 4]);
-  drawBeam(ctx, m1x - 4, yMid - 8, w * 0.12, yMid - 8, colour);
-  ctx.setLineDash([]); ctx.globalAlpha = 1;
-  ctx.restore();
+  ctx.strokeStyle = colour; ctx.globalAlpha = R * 0.55; ctx.lineWidth = 1.3;
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath();
+  ctx.moveTo(m1x - mW/2, yMid - 9);
+  ctx.lineTo(w * 0.13, yMid - 9);
+  ctx.stroke();
+  ctx.setLineDash([]); ctx.restore();
 
-  // Multi-bounce zig-zag inside cavity — proper diagonal offsets to show bounces
-  const numBounce = 5;
-  const spacing   = (mH * 1.4) / numBounce;  // vertical spread across mirror face
-  for (let i = 0; i < numBounce; i++) {
-    const alpha = Math.pow(R, i) * (i === 0 ? (1 - R) : R * (1 - R));
-    const brightScale = i === 0 ? 1 : Math.pow(R, i);
-    const yOff  = -mH * 0.6 + i * spacing * 1.2;   // vertical offset per pass
+  // ── Intracavity round-trip beams (horizontal, evenly spaced, dimming) ──
+  // Each pass j: intensity ∝ (1−R)·R^j.  Show up to maxPasses passes.
+  const maxPasses = 6;
+  const yStep  = (mH * 1.6) / (maxPasses + 1);  // even spacing across mirror face
+  const yStart = yMid - mH * 0.80;
+
+  for (let j = 0; j < maxPasses; j++) {
+    const intensity = (1 - R) * Math.pow(R, j);
+    const alpha = Math.min(1, intensity * 3.5);   // scale so j=0 is bright
+    if (alpha < 0.04) break;
+
+    const yj = yStart + j * yStep;
     ctx.save();
     ctx.strokeStyle = colour;
-    ctx.globalAlpha = Math.max(0.08, brightScale);
-    ctx.lineWidth = Math.max(0.6, 2 - i * 0.3);
-    // Forward pass: M1 → M2
-    ctx.beginPath();
-    ctx.moveTo(m1x + 4, yMid + yOff);
-    ctx.lineTo(m2x - 4, yMid + yOff + spacing * 0.5);
-    ctx.stroke();
-    // Return pass: M2 → M1 (slightly offset)
-    if (i < numBounce - 1) {
-      ctx.beginPath();
-      ctx.moveTo(m2x - 4, yMid + yOff + spacing * 0.5);
-      ctx.lineTo(m1x + 4, yMid + yOff + spacing);
-      ctx.stroke();
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = Math.max(0.5, 1.8 - j * 0.22);
+
+    // Forward pass (left → right, solid)
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(m1x + mW/2, yj); ctx.lineTo(m2x - mW/2, yj); ctx.stroke();
+
+    // Return pass (right → left, slightly offset downward by yStep/2)
+    const yr = yj + yStep * 0.5;
+    if (j < maxPasses - 1) {
+      ctx.beginPath(); ctx.moveTo(m2x - mW/2, yr); ctx.lineTo(m1x + mW/2, yr); ctx.stroke();
     }
-    // Transmitted beam leaking out of M2 rightward (each pass)
-    ctx.globalAlpha = Math.max(0.05, Math.pow(R, i) * (1 - R));
+
+    // Transmitted output from M2 (short stub, fades)
+    ctx.globalAlpha = Math.min(1, intensity * 2.5);
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(m2x + 4, yMid + yOff + spacing * 0.5);
-    ctx.lineTo(m2x + (m2x - m1x) * 0.25, yMid + yOff + spacing * 0.5);
+    ctx.moveTo(m2x + mW/2, yj);
+    ctx.lineTo(m2x + mW/2 + (m2x - m1x) * 0.18, yj);
     ctx.stroke();
     ctx.restore();
   }
 
-  // Main transmitted output beam (brightest — on-resonance)
-  drawBeam(ctx, m2x + 4, yMid, w * 0.88, yMid, colour);
+  // ── Main transmitted output → detector ──
+  drawBeam(ctx, m2x + mW/2, yMid, w * 0.88, yMid, colour, 1.8, true);
   drawDetector(ctx, w * 0.88, yMid, colour);
 
-  // Cavity spacing dimension line
+  // ── Cavity length dimension line (below mirrors) ──
+  const dimY = yMid + mH + 20;
   ctx.save();
-  ctx.strokeStyle = "#4a6e89"; ctx.lineWidth = 0.8; ctx.setLineDash([3, 3]);
-  ctx.beginPath(); ctx.moveTo(m1x, yMid + mH + 22); ctx.lineTo(m2x, yMid + mH + 22); ctx.stroke();
+  ctx.strokeStyle = "#4a6e89"; ctx.lineWidth = 0.9; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(m1x, dimY); ctx.lineTo(m2x, dimY); ctx.stroke();
   ctx.setLineDash([]);
+  ctx.lineWidth = 1.2;
   ctx.beginPath();
-  ctx.moveTo(m1x, yMid + mH + 18); ctx.lineTo(m1x, yMid + mH + 26); ctx.stroke();
-  ctx.moveTo(m2x, yMid + mH + 18); ctx.lineTo(m2x, yMid + mH + 26); ctx.stroke();
-  ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace"; ctx.textAlign = "center";
-  ctx.fillText(`L = ${displayLength(inp.armA)}`, (m1x + m2x) / 2, yMid + mH + 36);
+  ctx.moveTo(m1x, dimY-4); ctx.lineTo(m1x, dimY+4);
+  ctx.moveTo(m2x, dimY-4); ctx.lineTo(m2x, dimY+4);
+  ctx.stroke();
+  ctx.fillStyle = "#8ab4cc"; ctx.font = "10px monospace"; ctx.textAlign = "center";
+  ctx.fillText(`L = ${fmtLen(inp.armA)}`, (m1x + m2x)/2, dimY + 14);
   ctx.restore();
 
   drawOPDAnnotation(ctx, model, inp);
 }
 
-// --- Sagnac ---
-// Correct square ring topology: BS at bottom-left, three flat mirrors at
-// the other three corners. CW beam (solid) and CCW beam (dashed) both drawn.
-// Rotation arrow shows angular velocity Ω in the plane of the ring.
+// ─────────────────────────────────────────────────────────────────────────────
+// SAGNAC RING INTERFEROMETER
+// Square-ring layout (fibre-optic gyroscope topology):
+//   BS  — bottom-left  (input / output coupler)
+//   M1  — top-left
+//   M2  — top-right
+//   M3  — bottom-right
+// CCW beam (solid, bright): BS → left-up → M1 → top-right → M2 → right-down → M3 → bottom-left → BS
+// CW  beam (dashed, dim):   reverse direction
+// Detector on output port of BS (downward).
+// Rotation arrow (orange arc) inside ring, labelled with Ω value.
+// ─────────────────────────────────────────────────────────────────────────────
 function drawSagnac(inp, model, colour) {
   const [ctx, w, h] = setupCanvas($("diagram"));
   ctx.fillStyle = "#060e1a"; ctx.fillRect(0,0,w,h);
 
   const omega = inp.rotationRate;
 
-  // Square ring corners: BS at bottom-left, mirrors at other three corners
-  const margin = 0.12;
-  const x0 = w * margin,       y0 = h * (1 - margin * 1.6);  // BS (bottom-left)
-  const x1 = w * (1 - margin), y1 = h * (1 - margin * 1.6);  // M3 (bottom-right)
-  const x2 = w * (1 - margin), y2 = h * margin;               // M2 (top-right)
-  const x3 = w * margin,       y3 = h * margin;               // M1 (top-left)
+  // Ring corner positions — leave room for labels and source/detector outside
+  const lm = w * 0.20,  rm = w * 0.86;   // left/right x of ring
+  const tm = h * 0.10,  bm = h * 0.72;   // top/bottom y of ring
 
-  // Source enters from left of BS
-  drawSource(ctx, x0 - w * 0.09, y0, colour);
-  drawBeam(ctx, x0 - w * 0.06, y0, x0 - 13, y0, colour);
+  // Corners
+  const BS = { x: lm, y: bm };   // BS — bottom-left (also input/output port)
+  const M1 = { x: lm, y: tm };   // M1 — top-left
+  const M2 = { x: rm, y: tm };   // M2 — top-right
+  const M3 = { x: rm, y: bm };   // M3 — bottom-right
 
-  // Draw BS at x0,y0
-  drawBeamSplitter(ctx, x0, y0, 12, "BS");
+  const ringCx = (lm + rm) / 2;
+  const ringCy = (tm + bm) / 2;
 
-  // Draw the three corner mirrors
-  // M1 top-left: horizontal (beam travels horizontally through top)
-  drawMirror(ctx, x3, y3, true,  "M1");
-  // M2 top-right: vertical (beam travels vertically on right side)
-  drawMirror(ctx, x2, y2, false, "M2");
-  // M3 bottom-right: horizontal (beam travels horizontally on bottom)
-  drawMirror(ctx, x1, y1, true,  "M3");
+  // ── Source (enters from left of BS) ──
+  drawSource(ctx, BS.x - w * 0.12, BS.y, colour);
+  drawBeam(ctx, BS.x - w * 0.08, BS.y, BS.x - 13, BS.y, colour, 1.8, true);
 
-  // CCW beam path: BS → up-left → top-left → top-right → bottom-right → BS
-  //   offset +3px inward so it doesn't overlap CW
-  const off = 3;
-  ctx.save();
-  ctx.strokeStyle = colour; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.85;
-  ctx.beginPath();
-  ctx.moveTo(x0, y0 - 12);              // leave BS upward
-  ctx.lineTo(x3 + off, y3 + off);       // to M1
-  ctx.moveTo(x3 + off, y3);             // leave M1 rightward (top side)
-  ctx.lineTo(x2 - off, y2 + off);       // to M2
-  ctx.moveTo(x2, y2 + off);             // leave M2 downward
-  ctx.lineTo(x1 - off, y1 - off);       // to M3
-  ctx.moveTo(x1 - off, y1);             // leave M3 leftward (bottom side)
-  ctx.lineTo(x0 + 12, y0 - off);        // back to BS
-  ctx.stroke();
-  ctx.restore();
+  // ── Beamsplitter ──
+  drawBeamSplitter(ctx, BS.x, BS.y, 13, "BS");
 
-  // CW beam path: BS → right-bottom → bottom-right → top-right → top-left → BS
-  //   offset -3px (opposite side)
-  ctx.save();
-  ctx.strokeStyle = colour; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.45;
-  ctx.setLineDash([5, 4]);
-  ctx.beginPath();
-  ctx.moveTo(x0 + 12, y0 + off);       // leave BS rightward (bottom side)
-  ctx.lineTo(x1 + off, y1 + off);      // to M3
-  ctx.moveTo(x1, y1 - off);            // leave M3 upward
-  ctx.lineTo(x2 + off, y2 + off);      // to M2
-  ctx.moveTo(x2 - off, y2);            // leave M2 leftward (top side)
-  ctx.lineTo(x3 - off, y3 + off);      // to M1
-  ctx.moveTo(x3, y3 + off);            // leave M1 downward
-  ctx.lineTo(x0 - off, y0 - 12);       // back to BS
-  ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.restore();
+  // ── Three corner mirrors ──
+  // M1 top-left: horizontal flat mirror — beam arrives from below, exits rightward
+  drawMirror(ctx, M1.x, M1.y, true, "M1");
+  // M2 top-right: vertical flat mirror — beam arrives from left (top leg), exits downward
+  drawMirror(ctx, M2.x, M2.y, false, "M2");
+  // M3 bottom-right: vertical flat mirror — beam arrives from above, exits leftward
+  drawMirror(ctx, M3.x, M3.y, false, "M3");
 
-  // Detector exits BS downward
-  const detY = y0 + h * 0.14;
-  drawBeam(ctx, x0, y0 + 12, x0, detY, colour);
-  drawDetector(ctx, x0, detY, colour);
-
-  // CCW / CW direction labels
-  ctx.save();
-  ctx.font = "9px monospace"; ctx.textAlign = "center";
-  const ringCx = (x0 + x2) / 2, ringCy = (y0 + y2) / 2;
-  ctx.fillStyle = colour; ctx.globalAlpha = 0.85;
-  ctx.fillText("CCW", ringCx - 20, ringCy);
-  ctx.globalAlpha = 0.45;
-  ctx.fillText("CW", ringCx + 20, ringCy + 14);
-  ctx.restore();
-
-  // Rotation arrow inside the ring
-  if (Math.abs(omega) > 0.05) {
+  // Helper: draw one complete directed beam path around the ring
+  // segs = array of {x1,y1,x2,y2} segments
+  function drawRingPath(segs, alpha, dashed) {
     ctx.save();
-    ctx.strokeStyle = "#f5834a"; ctx.lineWidth = 2;
-    const arrowR = Math.min(x2 - x0, y0 - y2) * 0.20;
-    const dir = omega > 0 ? 1 : -1;
-    ctx.beginPath();
-    ctx.arc(ringCx, ringCy, arrowR, -Math.PI / 2, -Math.PI / 2 + dir * TAU * 0.7);
-    ctx.stroke();
-    // Arrowhead dot
-    const aAngle = -Math.PI / 2 + dir * TAU * 0.7;
-    ctx.fillStyle = "#f5834a";
-    ctx.beginPath();
-    ctx.arc(ringCx + arrowR * Math.cos(aAngle), ringCy + arrowR * Math.sin(aAngle), 4, 0, TAU);
-    ctx.fill();
-    ctx.font = "bold 10px monospace"; ctx.textAlign = "center";
-    ctx.fillText(`Ω = ${omega.toFixed(1)}°/s`, ringCx, ringCy + arrowR + 14);
-    ctx.restore();
-  } else {
-    ctx.save();
-    ctx.fillStyle = "#4a6e89"; ctx.font = "10px monospace"; ctx.textAlign = "center";
-    ctx.fillText("Ω = 0", ringCx, ringCy + 14);
+    ctx.strokeStyle = colour;
+    ctx.lineWidth   = 1.8;
+    ctx.globalAlpha = alpha;
+    if (dashed) ctx.setLineDash([6, 5]);
+    segs.forEach(({ x1, y1, x2, y2 }, idx) => {
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      // Arrowhead midway along each leg
+      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+      beamArrow(ctx, mx, my, x2 - x1, y2 - y1, colour);
+    });
+    ctx.setLineDash([]);
     ctx.restore();
   }
 
-  // Ring radius annotation (dashed line from centre to corner)
+  const o = 4; // lane offset so CCW and CW beams don't overlap
+  // CCW path (solid): BS(up) → M1 → M2 → M3 → BS
+  drawRingPath([
+    { x1: BS.x - o, y1: BS.y - 13, x2: M1.x - o, y2: M1.y + 4  },   // BS → M1 (left side)
+    { x1: M1.x + 4, y1: M1.y - o,  x2: M2.x - 4,  y2: M2.y - o  },   // M1 → M2 (top)
+    { x1: M2.x + o, y1: M2.y + 4,  x2: M3.x + o,  y2: M3.y - 4  },   // M2 → M3 (right side)
+    { x1: M3.x - 4, y1: M3.y + o,  x2: BS.x + 13, y2: BS.y + o  },   // M3 → BS (bottom)
+  ], 0.90, false);
+
+  // CW path (dashed): BS(right) → M3 → M2 → M1 → BS
+  drawRingPath([
+    { x1: BS.x + 13, y1: BS.y - o, x2: M3.x - 4,  y2: BS.y - o  },   // BS → M3 (bottom)
+    { x1: M3.x - o,  y1: M3.y - 4, x2: M2.x - o,  y2: M2.y + 4  },   // M3 → M2 (right)
+    { x1: M2.x - 4,  y1: M2.y + o, x2: M1.x + 4,  y2: M1.y + o  },   // M2 → M1 (top)
+    { x1: M1.x + o,  y1: M1.y + 4, x2: BS.x - 13, y2: BS.y - 13 },   // M1 → BS (left)
+  ], 0.40, true);
+
+  // ── Detector (below BS) ──
+  const detY = BS.y + h * 0.16;
+  drawBeam(ctx, BS.x, BS.y + 13, BS.x, detY - 16, colour, 1.8, true);
+  drawDetector(ctx, BS.x, detY, colour);
+
+  // ── Direction labels ──
   ctx.save();
-  ctx.strokeStyle = "#4a6e89"; ctx.lineWidth = 0.7; ctx.setLineDash([2, 4]);
-  ctx.beginPath(); ctx.moveTo(ringCx, ringCy); ctx.lineTo(x0, y0); ctx.stroke();
+  ctx.font = "bold 10px monospace"; ctx.textAlign = "center";
+  ctx.fillStyle = colour; ctx.globalAlpha = 0.90;
+  ctx.fillText("↺ CCW", ringCx - 38, ringCy - 10);
+  ctx.globalAlpha = 0.42;
+  ctx.fillText("↻ CW", ringCx + 38, ringCy + 16);
+  ctx.restore();
+
+  // ── Rotation indicator ──
+  const arrowR = Math.min(rm - lm, bm - tm) * 0.18;
+  if (Math.abs(omega) > 0.01) {
+    const dir = omega > 0 ? 1 : -1;
+    ctx.save();
+    ctx.strokeStyle = "#f5834a"; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(ringCx, ringCy, arrowR, -Math.PI/2, -Math.PI/2 + dir * TAU * 0.72);
+    ctx.stroke();
+    // Triangle arrowhead
+    const aAng = -Math.PI/2 + dir * TAU * 0.72;
+    const ax = ringCx + arrowR * Math.cos(aAng);
+    const ay = ringCy + arrowR * Math.sin(aAng);
+    const tAng = aAng + dir * Math.PI / 2;
+    ctx.fillStyle = "#f5834a";
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax - 8 * Math.cos(tAng - 0.4), ay - 8 * Math.sin(tAng - 0.4));
+    ctx.lineTo(ax - 8 * Math.cos(tAng + 0.4), ay - 8 * Math.sin(tAng + 0.4));
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#f5834a"; ctx.font = "bold 10px monospace"; ctx.textAlign = "center";
+    ctx.fillText(`Ω = ${omega.toFixed(2)}°/s`, ringCx, ringCy + arrowR + 16);
+    ctx.restore();
+  } else {
+    ctx.save();
+    ctx.fillStyle = "#5a7e9a"; ctx.font = "10px monospace"; ctx.textAlign = "center";
+    ctx.fillText("Ω = 0  (no Sagnac shift)", ringCx, ringCy + arrowR + 16);
+    ctx.restore();
+  }
+
+  // ── Ring area label (dashed half-diagonal) ──
+  ctx.save();
+  ctx.strokeStyle = "#4a6e89"; ctx.lineWidth = 0.8; ctx.setLineDash([3,4]);
+  ctx.beginPath(); ctx.moveTo(ringCx, ringCy); ctx.lineTo(M2.x, M2.y); ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = "#7da4c0"; ctx.font = "9px monospace"; ctx.textAlign = "center";
-  ctx.fillText(`r = ${displayLength(inp.armA)}`, (ringCx + x0) / 2 + 14, (ringCy + y0) / 2 - 6);
+  ctx.fillStyle = "#8ab4cc"; ctx.font = "9px monospace"; ctx.textAlign = "center";
+  ctx.fillText(`r = ${fmtLen(inp.armA)}`, (ringCx + M2.x)/2 - 8, (ringCy + M2.y)/2 + 14);
   ctx.restore();
 
   drawOPDAnnotation(ctx, model, inp);
@@ -1010,7 +1185,8 @@ function drawFringePattern(inp, model, colour) {
 // ==================== Sagnac rotation-sweep fringe ====================
 // Renders I(Ω) = ½[1 + γ cos(SF·Ω + φ₀)] as a horizontal stripe image,
 // with the current Ω position marked by a vertical line and the Earth
-// rate (Ω⊕ = 15°/hr) annotated. The x-axis spans ±2π/SF in Ω.
+// rate (Ω⊕ = 15°/hr) annotated.
+// FIXED x-axis: always ±180 °/s — matches the plot panel fixed axis.
 function drawSagnacSweep(ctx, W, H, PW, PH, dpr, model, colour, inp) {
   const RULER_H = 28;
   const imageH  = H - RULER_H;
@@ -1022,10 +1198,9 @@ function drawSagnacSweep(ctx, W, H, PW, PH, dpr, model, colour, inp) {
   const SF     = model.dPhidOmega;       // rad / (°/s)
   const phOff  = inp.phaseOffset * Math.PI / 180;
 
-  // Span the x-axis over ±2 full fringe periods in Ω
-  const omegaHalf = SF !== 0 ? 2 * Math.PI / Math.abs(SF) : 1000;
-  const omega_min = -omegaHalf;
-  const omega_max =  omegaHalf;
+  // Fixed ±180 °/s axis — same as the plot panel
+  const omega_min = -180;
+  const omega_max =  180;
   const omegaSpan = omega_max - omega_min;
 
   const PH_img = Math.round(imageH * dpr);
@@ -1499,77 +1674,167 @@ function drawPlot(inp, model, colour) {
   const gamma = inp.coherence / 100;
   const phaseOffset = inp.phaseOffset * Math.PI / 180;
 
-  // ---- Sagnac: plot φ_S (rad) vs Ω (°/s) ----
+  // ── Sagnac: I vs Ω  —  FIXED axis ±180 °/s, curve shifts with SF ──────
+  // The x-axis is always −180 … +180 °/s regardless of coil geometry.
+  // The fringe density and position change as SF = dφ/dΩ changes.
   if (currentInstrument === "sagnac") {
-    // Sweep Ω over ±OmegaMax °/s, scaled so ~4π phase fits the plot
-    // Scale factor: dφ/dΩ  (rad per °/s)
-    const SF = model.dPhidOmega;          // rad / (°/s)
-    // Choose x-axis span so ±4π rad are visible
-    const omegaSpan_degs = SF !== 0 ? 4 * Math.PI / Math.abs(SF) : 1000;
-    const omega_min = -omegaSpan_degs / 2;
-    const omega_max =  omegaSpan_degs / 2;
+    const SF        = model.dPhidOmega;   // rad/(°/s)
+    const OMEGA_MAX = 180;                // fixed axis half-range °/s
+    const oMin      = -OMEGA_MAX;
+    const oMax      =  OMEGA_MAX;
+    const oSpan     = oMax - oMin;
+    const oToX      = (o) => box.l + ((o - oMin) / oSpan) * pw;
 
-    // Cosine fringe curve  I(Ω) = ½[1 + γ cos(SF·Ω + φ₀)]
+    // ── Curve: I(Ω) = ½[1 + γ·cos(SF·Ω + φ₀)] ──
     ctx.strokeStyle = colour; ctx.lineWidth = 1.8;
     ctx.beginPath();
     for (let i = 0; i <= N; i++) {
-      const t = i / N;
-      const omega = omega_min + t * (omega_max - omega_min);
-      const phi = SF * omega + phaseOffset;
-      const I = 0.5 * (1 + gamma * Math.cos(phi));
-      const x = box.l + t * pw;
-      const y = box.t + ph * (1 - I);
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      const t   = i / N;
+      const o   = oMin + t * oSpan;
+      const phi = SF * o + phaseOffset;
+      const I   = 0.5 * (1 + gamma * Math.cos(phi));
+      i === 0 ? ctx.moveTo(box.l + t * pw, box.t + ph * (1 - I))
+              : ctx.lineTo(box.l + t * pw, box.t + ph * (1 - I));
     }
     ctx.stroke();
 
-    // Earth rotation rate marker: 15 °/hr = 0.004167 °/s
-    const earthOmega_degs = 15 / 3600; // °/s
-    if (earthOmega_degs >= omega_min && earthOmega_degs <= omega_max) {
-      const xEarth = box.l + ((earthOmega_degs - omega_min) / (omega_max - omega_min)) * pw;
-      ctx.save();
-      ctx.strokeStyle = "#f5c542"; ctx.lineWidth = 0.8; ctx.setLineDash([3, 3]);
-      ctx.beginPath(); ctx.moveTo(xEarth, box.t); ctx.lineTo(xEarth, box.t + ph); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = "#f5c542"; ctx.font = "8px monospace"; ctx.textAlign = "left";
-      ctx.fillText("Ω⊕", xEarth + 2, box.t + 10);
-      ctx.restore();
-    }
+    // ── Earth rate: 15°/hr = 0.00417°/s ──
+    const earthO = 15 / 3600;
+    const xEarth = oToX(earthO);
+    ctx.save();
+    ctx.strokeStyle = "#f5c542"; ctx.lineWidth = 0.8; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(xEarth, box.t); ctx.lineTo(xEarth, box.t + ph); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#f5c542"; ctx.font = "8px monospace"; ctx.textAlign = "left";
+    ctx.fillText("Ω⊕", xEarth + 2, box.t + 10);
+    ctx.restore();
 
-    // Current Ω marker
-    const currentOmega = inp.rotationRate;
-    const tx = (currentOmega - omega_min) / (omega_max - omega_min);
-    if (tx >= 0 && tx <= 1) {
-      const cx = box.l + tx * pw;
-      const phi_now = SF * currentOmega + phaseOffset;
-      const I_now = 0.5 * (1 + gamma * Math.cos(phi_now));
-      const cy = box.t + ph * (1 - I_now);
+    // ── Current Ω marker ──
+    const curO  = inp.rotationRate;
+    const xCurO = oToX(curO);
+    if (xCurO >= box.l && xCurO <= box.l + pw) {
+      const I_cur = 0.5 * (1 + gamma * Math.cos(SF * curO + phaseOffset));
+      const yCurO = box.t + ph * (1 - I_cur);
       ctx.fillStyle = "#3dd6f5";
-      ctx.beginPath(); ctx.arc(cx, cy, 4.5, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(xCurO, yCurO, 4.5, 0, TAU); ctx.fill();
       ctx.strokeStyle = "#3dd6f5"; ctx.lineWidth = 0.7; ctx.setLineDash([2, 3]);
-      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, box.t + ph); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(xCurO, yCurO); ctx.lineTo(xCurO, box.t + ph); ctx.stroke();
       ctx.setLineDash([]);
     }
 
-    // Axis labels
+    // ── Scale factor annotation ──
+    const sfStr = Math.abs(SF) < 1e-6 ? SF.toExponential(2)
+                : Math.abs(SF) < 0.01  ? SF.toExponential(3)
+                : SF.toFixed(5);
+    ctx.fillStyle = "#f5c542"; ctx.font = "8px monospace"; ctx.textAlign = "left";
+    ctx.fillText(`SF = ${sfStr} rad/(°/s)`, box.l + 2, box.t + 11);
+
+    // ── Fixed x-axis ticks every 60°/s ──
+    ctx.fillStyle = "#7da4c0"; ctx.font = "9px monospace";
+    [-180,-120,-60,0,60,120,180].forEach(v => {
+      const xv = oToX(v);
+      ctx.strokeStyle = "#1f3d5c"; ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(xv, box.t + ph); ctx.lineTo(xv, box.t + ph + 4); ctx.stroke();
+      ctx.textAlign = "center";
+      ctx.fillText(`${v}`, xv, box.t + ph + 15);
+    });
+
+    // ── Axis labels ──
     ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace"; ctx.textAlign = "center";
-    ctx.fillText("Rotation rate Ω (°/s)", w / 2, h - 4);
+    ctx.fillText("Rotation rate  Ω  (°/s)", w / 2, h - 4);
     ctx.save();
     ctx.translate(12, h / 2); ctx.rotate(-Math.PI / 2);
     ctx.fillText("I / I₀", 0, 0);
     ctx.restore();
-    // X-axis endpoint labels
-    const fmtOmega = v => Math.abs(v) < 0.001 ? v.toExponential(2)
-                        : Math.abs(v) < 1      ? v.toFixed(4)
-                        : v.toFixed(2);
-    ctx.textAlign = "left";  ctx.fillText(fmtOmega(omega_min), box.l + 2, box.t + ph + 18);
-    ctx.textAlign = "center"; ctx.fillText("0", box.l + pw/2, box.t + ph + 18);
-    ctx.textAlign = "right";  ctx.fillText(fmtOmega(omega_max), box.l + pw, box.t + ph + 18);
 
-    // Y-axis ticks
+    // ── Y-axis ticks ──
+    ctx.textAlign = "right";
+    [[0,"0"],[0.5,"½"],[1,"1"]].forEach(([v, lbl]) => {
+      const yv = box.t + ph * (1 - v);
+      ctx.fillStyle = "#7da4c0"; ctx.font = "9px monospace";
+      ctx.fillText(lbl, box.l - 3, yv + 3);
+      ctx.strokeStyle = "#1f3d5c"; ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(box.l - 3, yv); ctx.lineTo(box.l, yv); ctx.stroke();
+    });
+    return;
+  }
+
+  const lambda = model.lambda;
+
+  // ── Fabry–Pérot: Airy plot centred at current resonance order ──────────────
+  // The FP OPD = 2nL is typically ≫ λ, so an axis centred at OPD=0 never shows
+  // the actual operating point.  Instead we find the nearest resonance order m₀
+  // and centre the axis on m₀·λ, spanning ±2·FSR so 4 peaks are always visible.
+  if (currentInstrument === "fabryPerot") {
+    const R   = inp.reflectivity / 100;
+    const F   = (4 * R) / (1 - R) ** 2;
+    const opd = model.opd;  // 2nL in nm
+
+    // Nearest integer resonance order to current OPD
+    const m0     = Math.round(opd / lambda);
+    const centre = m0 * lambda;   // OPD at nearest peak [nm]
+    // Span ±2 FSR on each side (FSR = λ in OPD units for the Airy plot)
+    const halfSpan = 2 * lambda;
+    const fpMin = centre - halfSpan;
+    const fpMax = centre + halfSpan;
+    const fpSpan = fpMax - fpMin;
+    const fpToX = (o) => box.l + ((o - fpMin) / fpSpan) * pw;
+
+    // Integer order tick marks (gold, at each mλ within window)
+    ctx.strokeStyle = "#f5c54240"; ctx.lineWidth = 0.8;
+    for (let m = Math.ceil(fpMin / lambda); m <= Math.floor(fpMax / lambda); m++) {
+      const x = fpToX(m * lambda);
+      ctx.beginPath(); ctx.moveTo(x, box.t + ph); ctx.lineTo(x, box.t + ph + 5); ctx.stroke();
+    }
+
+    // Airy curve
+    ctx.strokeStyle = "#f5834a"; ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    for (let i = 0; i <= N; i++) {
+      const t      = i / N;
+      const opdVal = fpMin + t * fpSpan;
+      const phase  = TAU * (opdVal / lambda) + phaseOffset;
+      const raw    = 1 / (1 + F * Math.sin(phase / 2) ** 2);
+      const I      = raw * gamma + 0.5 * (1 - gamma);
+      i === 0 ? ctx.moveTo(fpToX(opdVal), box.t + ph * (1 - I))
+              : ctx.lineTo(fpToX(opdVal), box.t + ph * (1 - I));
+    }
+    ctx.stroke();
+
+    // Current OPD marker — actual position (no wrapping needed — it's always in window)
+    const fpCx = fpToX(opd);
+    const fpCy = box.t + ph * (1 - model.intensity);
+    ctx.fillStyle = "#3dd6f5";
+    ctx.beginPath(); ctx.arc(fpCx, fpCy, 4.5, 0, TAU); ctx.fill();
+    ctx.strokeStyle = "#3dd6f5"; ctx.lineWidth = 0.7; ctx.setLineDash([2, 3]);
+    ctx.beginPath(); ctx.moveTo(fpCx, fpCy); ctx.lineTo(fpCx, box.t + ph); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Axis labels
+    ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace"; ctx.textAlign = "center";
+    ctx.fillText("OPD (nm)", w / 2, h - 4);
+    ctx.save();
+    ctx.translate(12, h / 2); ctx.rotate(-Math.PI / 2);
+    ctx.fillText("I / I₀", 0, 0);
+    ctx.restore();
+
+    // X tick labels — show OPD values in nm/µm
+    ctx.fillStyle = "#7da4c0"; ctx.font = "9px monospace";
+    for (let m = Math.ceil(fpMin / lambda); m <= Math.floor(fpMax / lambda); m++) {
+      const nmVal = m * lambda;
+      const lbl   = nmVal < 1000 ? nmVal.toFixed(0) : (nmVal / 1e3).toFixed(2) + "k";
+      ctx.textAlign = "center";
+      ctx.fillText(lbl, fpToX(nmVal), box.t + ph + 18);
+    }
+    // Resonance order + λ annotation
+    ctx.fillStyle = "#f5834a"; ctx.font = "8px monospace"; ctx.textAlign = "left";
+    ctx.fillText(`m₀ = ${m0}  λ = ${lambda.toFixed(1)} nm`, box.l + 2, box.t + 11);
+
+    // Y ticks
     ctx.textAlign = "right";
     [[0,"0"],[0.5,"0.5"],[1,"1"]].forEach(([v, label]) => {
       const y = box.t + ph * (1 - v);
+      ctx.fillStyle = "#7da4c0"; ctx.font = "10px monospace";
       ctx.fillText(label, box.l - 3, y + 3);
       ctx.strokeStyle = "#1f3d5c"; ctx.lineWidth = 0.5;
       ctx.beginPath(); ctx.moveTo(box.l - 3, y); ctx.lineTo(box.l, y); ctx.stroke();
@@ -1577,9 +1842,8 @@ function drawPlot(inp, model, colour) {
     return;
   }
 
-  // ---- Fixed x-axis: −4λ … +4λ in physical nm, centred at OPD = 0 ----
+  // ---- Michelson / MZI: fixed x-axis −4λ … +4λ, centred at OPD = 0 ----
   // The axis is FIXED; the cyan marker scrolls to show current OPD position.
-  const lambda  = model.lambda;
   const xSpan   = 8 * lambda;    // nm
   const xMin    = -4 * lambda;
   const xMax    =  4 * lambda;
@@ -1592,34 +1856,17 @@ function drawPlot(inp, model, colour) {
     ctx.beginPath(); ctx.moveTo(x, box.t + ph); ctx.lineTo(x, box.t + ph + 5); ctx.stroke();
   }
 
-  if (currentInstrument === "fabryPerot") {
-    const R = inp.reflectivity / 100;
-    const F = (4 * R) / (1 - R) ** 2;
-    ctx.strokeStyle = "#f5834a"; ctx.lineWidth = 1.8;
-    ctx.beginPath();
-    for (let i = 0; i <= N; i++) {
-      const t      = i / N;
-      const opdVal = xMin + t * xSpan;
-      const phase  = TAU * (opdVal / lambda) + phaseOffset;
-      const raw    = 1 / (1 + F * Math.sin(phase / 2) ** 2);
-      const I      = raw * gamma + 0.5 * (1 - gamma);
-      i === 0 ? ctx.moveTo(nmToX(opdVal), box.t + ph * (1 - I))
-              : ctx.lineTo(nmToX(opdVal), box.t + ph * (1 - I));
-    }
-    ctx.stroke();
-  } else {
-    ctx.strokeStyle = colour; ctx.lineWidth = 1.8;
-    ctx.beginPath();
-    for (let i = 0; i <= N; i++) {
-      const t      = i / N;
-      const opdVal = xMin + t * xSpan;
-      const phase  = TAU * (opdVal / lambda) + phaseOffset;
-      const I      = 0.5 * (1 + gamma * Math.cos(phase));
-      i === 0 ? ctx.moveTo(nmToX(opdVal), box.t + ph * (1 - I))
-              : ctx.lineTo(nmToX(opdVal), box.t + ph * (1 - I));
-    }
-    ctx.stroke();
+  ctx.strokeStyle = colour; ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  for (let i = 0; i <= N; i++) {
+    const t      = i / N;
+    const opdVal = xMin + t * xSpan;
+    const phase  = TAU * (opdVal / lambda) + phaseOffset;
+    const I      = 0.5 * (1 + gamma * Math.cos(phase));
+    i === 0 ? ctx.moveTo(nmToX(opdVal), box.t + ph * (1 - I))
+            : ctx.lineTo(nmToX(opdVal), box.t + ph * (1 - I));
   }
+  ctx.stroke();
 
   // Current OPD marker — wraps onto fixed axis (modulo xSpan)
   const opdWrapped = ((model.opd - xMin) % xSpan + xSpan) % xSpan + xMin;
@@ -1683,25 +1930,27 @@ function render() {
   $("tiltAngleOut").textContent = `${inp.tiltAngle.toFixed(2)} mrad`;
   $("fiberTurnsOut").textContent = `${inp.fiberTurns.toFixed(0)} turns`;
   const fovUnit = currentInstrument === "fabryPerot" ? "mrad" : "mm";
-  $("fringeApertureOut").textContent = `${Number($("fringeAperture").value).toFixed(1)} ${fovUnit}`;
+  $("fringeApertureOut").textContent = `${inp.fringeAperture.toFixed(1)} ${fovUnit}`;
 
   // OPD display
   $("opdHeading").textContent = cfg.opdHeading;
   $("opdDisplay").textContent = displayLength(model.opd);
   $("opdDefinition").innerHTML = cfg.opdDef;
 
-  // Coherence bar
+  // Coherence bar — fill colour tracks the current wavelength
   const fill = $("coherenceFill");
   fill.style.width = inp.coherence + "%";
+  fill.style.background = colour;
 
   // Header badge
   $("sourcePresetBadge").textContent = SOURCE_PRESETS[sourcePreset.value]?.label || `${inp.wavelength.toFixed(1)} nm`;
 
-  // Intensity
+  // Intensity — use model.visibility for FP (Airy), model.gamma for two-beam
+  const vis = model.visibility;
   $("intensity").textContent = model.intensity.toFixed(4);
-  $("intensityMin").textContent = (0.5 * (1 - model.gamma)).toFixed(4);
-  $("intensityMax").textContent = (0.5 * (1 + model.gamma)).toFixed(4);
-  $("contrast").textContent = `${(model.visibility * 100).toFixed(1)}%`;
+  $("intensityMin").textContent = (0.5 * (1 - vis)).toFixed(4);
+  $("intensityMax").textContent = (0.5 * (1 + vis)).toFixed(4);
+  $("contrast").textContent = `${(vis * 100).toFixed(1)}%`;
 
   // Interference state
   const phi = ((model.phase % TAU) + TAU) % TAU;
@@ -1732,8 +1981,7 @@ function render() {
   // FP-specific
   if (currentInstrument === "fabryPerot" && model.finesse !== undefined) {
     $("finesses").textContent = `ℱ = ${model.finesse.toFixed(2)}`;
-    const fsrHz = (model.fsr / (inp.wavelength * 1e-9)) * 3e8 / (inp.wavelength * 1e-9) * (model.fsr * 1e-9);
-    $("fsr").textContent = `${model.fsr.toFixed(4)} nm`;
+    $("fsr").textContent = fmtLen(model.fsr);
   }
   // Sagnac-specific
   if (currentInstrument === "sagnac" && model.sagnacPhase !== undefined) {
@@ -1797,8 +2045,33 @@ function shiftArmB(multiplier) {
   }
 }
 
-$("quarterWave").addEventListener("click", () => shiftArmB(0.25));
-$("halfWave").addEventListener("click",    () => shiftArmB(0.5));
+function shiftPhaseOffset(fractions) {
+  // For Sagnac: shift the electronic phase offset by λ/4 or λ/2 equivalent
+  const delta = fractions * 360; // degrees (λ/4 = 90°, λ/2 = 180°)
+  const current = Number(controls.phaseOffset.value);
+  const next = ((current + delta) % 360 + 360) % 360;
+  controls.phaseOffset.value      = next;
+  controls.phaseOffsetInput.value = next.toFixed(1);
+  render();
+}
+
+$("quarterWave").addEventListener("click", () => {
+  if (currentInstrument === "sagnac") shiftPhaseOffset(0.25);
+  else shiftArmB(0.25);
+});
+$("halfWave").addEventListener("click", () => {
+  if (currentInstrument === "sagnac") shiftPhaseOffset(0.5);
+  else shiftArmB(0.5);
+});
+
+// ==================== Resize Observer ====================
+// Re-render all canvases when the page layout changes size.
+
+const _resizeObserver = new ResizeObserver(() => render());
+["diagram", "fringeCanvas", "plot"].forEach(id => {
+  const el = $(id);
+  if (el) _resizeObserver.observe(el);
+});
 
 // ==================== Startup ====================
 
