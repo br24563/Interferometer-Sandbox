@@ -611,30 +611,97 @@ function drawBeamSplitter(ctx, x, y, size = 14, label = "BS") {
 }
 
 // Mirror: gold rectangle with hatched backing, label above (horiz) or to the right (vert).
+// Used for Michelson end-mirrors only (beam hits face head-on and reflects straight back).
 // horiz = true  → horizontal mirror face (beam hits it from above/below)
 // horiz = false → vertical mirror face (beam hits it from the side)
 function drawMirror(ctx, x, y, horiz = false, label = "M") {
   const W = horiz ? 28 : 5, H = horiz ? 5 : 28;
-  const BACK = 5; // backing thickness
+  const BACK = 5;
   ctx.save();
-  // Backing — placed on the *back* side of the face so it doesn't cover the face
   ctx.fillStyle = "#2a1a00";
-  if (horiz) {
-    // Face is horizontal; backing goes ABOVE the face (lower y)
-    ctx.fillRect(x - W/2, y - H/2 - BACK, W, BACK);
-  } else {
-    // Face is vertical; backing goes to the RIGHT of the face (higher x)
-    ctx.fillRect(x + W/2, y - H/2, BACK, H);
-  }
-  // Mirror face
+  if (horiz) ctx.fillRect(x - W / 2, y - H / 2 - BACK, W, BACK);
+  else       ctx.fillRect(x + W / 2, y - H / 2, BACK, H);
   ctx.fillStyle = "#f5c542";
-  ctx.fillRect(x - W/2, y - H/2, W, H);
-  // Label
+  ctx.fillRect(x - W / 2, y - H / 2, W, H);
   ctx.fillStyle = "#c0a030";
-  ctx.font = "bold 10px monospace";
+  ctx.font = FONT_MONO_BOLD;
   ctx.textAlign = "center";
-  if (horiz) ctx.fillText(label, x, y - H/2 - BACK - 4);
-  else       ctx.fillText(label, x + W/2 + BACK + 8, y + 4);
+  if (horiz) ctx.fillText(label, x, y - H / 2 - BACK - 4);
+  else       ctx.fillText(label, x + W / 2 + BACK + 8, y + 4);
+  ctx.restore();
+}
+
+/**
+ * 45° fold mirror for Mach–Zehnder and Sagnac corner reflectors.
+ *
+ * Draws a diagonal reflective line (gold, with dark backing) oriented so that
+ * it correctly redirects the beam by 90°.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} x  Centre x of the mirror
+ * @param {number} y  Centre y of the mirror
+ * @param {string} orientation
+ *   "NE" — reflects a rightward beam upward   (bottom-left → top-right diagonal)
+ *   "NW" — reflects a leftward beam upward    (bottom-right → top-left diagonal)  [unused currently]
+ *   "SE" — reflects a downward beam rightward (top-left → bottom-right diagonal)
+ *   "SW" — reflects a rightward beam downward (top-right → bottom-left diagonal)  [unused currently]
+ * @param {string} label
+ * @param {string} labelPos  "above" | "below" | "left" | "right"
+ */
+function drawFoldMirror(ctx, x, y, orientation, label = "M", labelPos = "above") {
+  const HALF = 14;   // half-length of the mirror line
+  const BACK = 4;    // backing offset (perpendicular to mirror, toward incidence side)
+
+  ctx.save();
+
+  // Determine the unit vector along the mirror face and the backing direction
+  // All fold mirrors in these diagrams are 45°; the orientation sets the diagonal.
+  let dx, dy, bx, by;
+  switch (orientation) {
+    case "NE": dx =  1; dy = -1; bx = -1; by = -1; break;  // ╱ — beam goes right→up
+    case "NW": dx = -1; dy = -1; bx =  1; by = -1; break;  // ╲ (mirrored) — beam goes left→up
+    case "SE": dx =  1; dy =  1; bx = -1; by =  1; break;  // ╲ — beam goes down→right
+    case "SW": dx = -1; dy =  1; bx =  1; by =  1; break;  // ╱ (mirrored) — beam goes right→down
+    default:   dx =  1; dy = -1; bx = -1; by = -1;
+  }
+  const inv = 1 / Math.sqrt(2);
+  dx *= inv; dy *= inv; bx *= inv; by *= inv;
+
+  const fx1 = x - dx * HALF, fy1 = y - dy * HALF;
+  const fx2 = x + dx * HALF, fy2 = y + dy * HALF;
+
+  // Dark backing (offset toward incidence side)
+  ctx.strokeStyle = "#1a0e00";
+  ctx.lineWidth   = 5;
+  ctx.lineCap     = "round";
+  ctx.globalAlpha = 0.7;
+  ctx.beginPath();
+  ctx.moveTo(fx1 + bx * BACK, fy1 + by * BACK);
+  ctx.lineTo(fx2 + bx * BACK, fy2 + by * BACK);
+  ctx.stroke();
+
+  // Gold reflective face
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = "#f5c542";
+  ctx.lineWidth   = 3.5;
+  ctx.beginPath();
+  ctx.moveTo(fx1, fy1);
+  ctx.lineTo(fx2, fy2);
+  ctx.stroke();
+
+  // Label
+  ctx.fillStyle  = "#c0a030";
+  ctx.font       = FONT_MONO_BOLD;
+  ctx.textAlign  = "center";
+  ctx.textBaseline = "middle";
+  const LBL_OFF = 14;
+  switch (labelPos) {
+    case "above": ctx.fillText(label, x, y - LBL_OFF); break;
+    case "below": ctx.fillText(label, x, y + LBL_OFF); break;
+    case "left":  ctx.textAlign = "right";  ctx.fillText(label, x - LBL_OFF, y); break;
+    case "right": ctx.textAlign = "left";   ctx.fillText(label, x + LBL_OFF, y); break;
+  }
+  ctx.textBaseline = "alphabetic";
   ctx.restore();
 }
 
@@ -860,22 +927,26 @@ function drawMachZehnder(inp, model, colour) {
   // Rectangular beam path corners
   const x1 = w * 0.27, x2 = w * 0.73;
   const yA  = h * 0.70, yB = h * 0.26;
-  const bs  = 13; // beamsplitter size
+  const bs  = 13; // beamsplitter half-size
 
   // ── Source → BS1 ──
   drawSource(ctx, w * 0.09, yA, colour);
   drawBeam(ctx, w * 0.13, yA, x1 - bs, yA, colour, 1.8, true);
   drawBeamSplitter(ctx, x1, yA, bs, "BS1");
 
-  // ── Arm A: lower horizontal → M1 → right vertical up → BS2 ──
-  drawBeam(ctx, x1 + bs, yA,  x2 - 4, yA,      colour, 1.8, true);  // lower horiz
-  drawMirror(ctx, x2, yA, false, "M1");
-  drawBeam(ctx, x2, yA - 4,   x2, yB + bs,      colour, 1.8, true);  // right vert up
+  // ── Arm A (lower path): BS1 → M1(bottom-right) → BS2 ──
+  // Beam travels right then turns upward at M1.
+  // M1 is a 45° fold mirror that redirects a rightward beam upward (NE orientation).
+  drawBeam(ctx, x1 + bs, yA, x2, yA,      colour, 1.8, true);   // rightward to M1
+  drawFoldMirror(ctx, x2, yA, "NE", "M1", "right");
+  drawBeam(ctx, x2, yA - 1, x2, yB + bs,  colour, 1.8, true);   // upward to BS2
 
-  // ── Arm B: left vertical up → M2 → upper horizontal → BS2 ──
-  drawBeam(ctx, x1, yA - bs,  x1, yB + 4,        colour, 1.8, true);  // left vert up
-  drawMirror(ctx, x1, yB, true, "M2");
-  drawBeam(ctx, x1 + 4, yB,   x2 - bs, yB,       colour, 1.8, true);  // upper horiz
+  // ── Arm B (upper path): BS1 → M2(top-left) → BS2 ──
+  // Beam travels upward then turns rightward at M2.
+  // M2 is a 45° fold mirror that redirects an upward beam rightward (SE orientation).
+  drawBeam(ctx, x1, yA - bs, x1, yB,      colour, 1.8, true);   // upward to M2
+  drawFoldMirror(ctx, x1, yB, "SE", "M2", "left");
+  drawBeam(ctx, x1 + 1, yB, x2 - bs, yB, colour, 1.8, true);    // rightward to BS2
 
   // ── BS2 → output → detector ──
   drawBeamSplitter(ctx, x2, yB, bs, "BS2");
@@ -1065,13 +1136,16 @@ function drawSagnac(inp, model, colour) {
   // ── Beamsplitter ──
   drawBeamSplitter(ctx, BS.x, BS.y, 13, "BS");
 
-  // ── Three corner mirrors ──
-  // M1 top-left: horizontal flat mirror — beam arrives from below, exits rightward
-  drawMirror(ctx, M1.x, M1.y, true, "M1");
-  // M2 top-right: vertical flat mirror — beam arrives from left (top leg), exits downward
-  drawMirror(ctx, M2.x, M2.y, false, "M2");
-  // M3 bottom-right: vertical flat mirror — beam arrives from above, exits leftward
-  drawMirror(ctx, M3.x, M3.y, false, "M3");
+  // ── Three 45° fold mirrors at ring corners ──
+  // M1 — top-left: CCW beam arrives upward, exits rightward  → SE fold (╲)
+  //                CW  beam arrives leftward, exits downward → SE fold (same surface)
+  drawFoldMirror(ctx, M1.x, M1.y, "SE", "M1", "left");
+  // M2 — top-right: CCW beam arrives rightward, exits downward → NE fold (╱) back-side used
+  //                 CW  beam arrives upward, exits leftward    → same 45° surface
+  drawFoldMirror(ctx, M2.x, M2.y, "NE", "M2", "right");
+  // M3 — bottom-right: CCW beam arrives downward, exits leftward → SE fold (╲) back-side
+  //                    CW  beam arrives leftward, exits upward
+  drawFoldMirror(ctx, M3.x, M3.y, "SE", "M3", "right");
 
   // Helper: draw one complete directed beam path around the ring
   // segs = array of {x1,y1,x2,y2} segments
@@ -1874,43 +1948,51 @@ function drawPlot(inp, model, colour) {
     return;
   }
 
-  // ── Michelson / MZI: fixed x-axis −4λ … +4λ centred at OPD = 0 ──────────
-  // The axis window is fixed; the operating-point marker wraps to always be
-  // visible, demonstrating the periodic nature of the interference function.
+  // ── Michelson / MZI: FIXED physical x-axis ──────────────────────────────
   //
-  // A faint coherence envelope ±½γ is drawn around the I = ½ baseline so the
-  // effect of reducing coherence is immediately visible.
-  const xSpan = 8 * lambda;
-  const xMin  = -4 * lambda;
+  // The x-axis spans a constant ±2 µm window (4000 nm total half-span) in
+  // physical OPD units.  The labels never move.  When λ changes, the cosine
+  // curve simply becomes denser or sparser — the physical fringe spacing
+  // λ/2 shrinks or grows while the axis remains anchored.
+  //
+  // This mirrors how a real instrument displays its scan: the OPD axis is a
+  // fixed, calibrated physical length, and the number of fringes per unit
+  // length is what changes with wavelength.
+  //
+  // FIXED_HALF_SPAN is chosen so that at λ = 633 nm (He-Ne) exactly 6 full
+  // fringe cycles (12 half-fringes) fit in the ±4 × 633 = ±2532 nm window,
+  // giving a well-filled plot.  At 400 nm more cycles are visible; at 780 nm
+  // fewer — which is the physically correct behaviour.
+  const FIXED_HALF_SPAN = 4000;          // nm  — ±4 µm, constant
+  const xSpan = 2 * FIXED_HALF_SPAN;
+  const xMin  = -FIXED_HALF_SPAN;
   const nmToX = (nm) => box.l + ((nm - xMin) / xSpan) * pw;
 
   // ── Coherence envelope (drawn first, under the signal curve) ──
   if (gamma < 0.999) {
-    const envTop = 0.5 * (1 + gamma);   // I_max
-    const envBot = 0.5 * (1 - gamma);   // I_min
+    const envTop = 0.5 * (1 + gamma);
+    const envBot = 0.5 * (1 - gamma);
     ctx.fillStyle = "rgba(61,214,245,0.07)";
-    ctx.fillRect(box.l, box.t + ph * (1 - envTop),
-                 pw,    ph * (envTop - envBot));
-    // Dashed envelope lines
+    ctx.fillRect(box.l, box.t + ph * (1 - envTop), pw, ph * (envTop - envBot));
     ctx.strokeStyle = "rgba(61,214,245,0.30)"; ctx.lineWidth = 0.8;
     ctx.setLineDash([4, 4]);
     [envTop, envBot].forEach(v => {
       ctx.beginPath();
-      ctx.moveTo(box.l, box.t + ph * (1 - v));
+      ctx.moveTo(box.l,      box.t + ph * (1 - v));
       ctx.lineTo(box.l + pw, box.t + ph * (1 - v));
       ctx.stroke();
     });
     ctx.setLineDash([]);
   }
 
-  // ── Lambda tick marks at integer multiples ──
-  ctx.strokeStyle = CLR_GOLD + "40"; ctx.lineWidth = 0.8;
-  for (let i = -4; i <= 4; i++) {
-    const x = nmToX(i * lambda);
+  // ── Physical tick marks every 1000 nm (1 µm) — FIXED regardless of λ ──
+  ctx.strokeStyle = CLR_GOLD + "50"; ctx.lineWidth = 0.8;
+  for (let nm = xMin; nm <= -xMin; nm += 1000) {
+    const x = nmToX(nm);
     ctx.beginPath(); ctx.moveTo(x, box.t + ph); ctx.lineTo(x, box.t + ph + 5); ctx.stroke();
   }
 
-  // ── Interference signal curve ──
+  // ── Interference signal curve — fringe density changes with λ ──
   ctx.strokeStyle = colour; ctx.lineWidth = 1.8;
   ctx.beginPath();
   for (let i = 0; i <= N; i++) {
@@ -1923,6 +2005,7 @@ function drawPlot(inp, model, colour) {
   ctx.stroke();
 
   // ── Current OPD operating point marker ──
+  // Wrap the OPD into the fixed axis window so the marker is always visible
   const opdWrapped = ((model.opd - xMin) % xSpan + xSpan) % xSpan + xMin;
   const cx = nmToX(opdWrapped);
   const cy = box.t + ph * (1 - model.intensity);
@@ -1940,16 +2023,16 @@ function drawPlot(inp, model, colour) {
   ctx.fillText("I / I₀", 0, 0);
   ctx.restore();
 
-  // ── X tick labels ──
+  // ── Fixed x-axis tick labels (physical nm, never change) ──
   ctx.fillStyle = CLR_MUTED; ctx.font = FONT_MONO_SM;
-  for (let i = -4; i <= 4; i++) {
-    const nm_val = i * lambda;
-    const lbl    = i === 0 ? "0"
-                 : Math.abs(nm_val) < 1000 ? nm_val.toFixed(0)
-                 : (nm_val / 1e3).toFixed(1) + "k";
+  for (let nm = xMin; nm <= -xMin; nm += 1000) {
+    const lbl = nm === 0 ? "0"
+              : Math.abs(nm) < 1000 ? nm.toFixed(0)
+              : (nm / 1000).toFixed(0) + "k";
     ctx.textAlign = "center";
-    ctx.fillText(lbl, nmToX(nm_val), box.t + ph + 18);
+    ctx.fillText(lbl, nmToX(nm), box.t + ph + 18);
   }
+  // λ annotation (top-left) — this is the only thing that changes with λ
   ctx.fillStyle = CLR_GOLD; ctx.font = FONT_MONO_SM; ctx.textAlign = "left";
   ctx.fillText(`λ = ${lambda.toFixed(1)} nm`, box.l + 2, box.t + 11);
 
@@ -1961,6 +2044,25 @@ function drawPlot(inp, model, colour) {
     ctx.fillText(label, box.l - 3, y + 3);
     ctx.strokeStyle = CLR_AXIS; ctx.lineWidth = 0.5;
     ctx.beginPath(); ctx.moveTo(box.l - 3, y); ctx.lineTo(box.l, y); ctx.stroke();
+  });
+}
+
+// ==================== Slider fill tracks ====================
+//
+// CSS alone cannot style the "filled" portion of a range input consistently
+// across all browsers.  We update each slider's background as a linear-gradient
+// that splits at the thumb position, giving a clean filled/unfilled track.
+//
+// Colour: filled portion = var(--cyan) dim → cyan; unfilled = var(--line) → dark blue.
+
+function updateSliderFills() {
+  document.querySelectorAll('.input-row input[type="range"]').forEach(el => {
+    const min  = Number(el.min)  || 0;
+    const max  = Number(el.max)  || 100;
+    const val  = Number(el.value);
+    const pct  = ((val - min) / (max - min)) * 100;
+    el.style.background =
+      `linear-gradient(90deg, #1a6e87 0%, #3dd6f5 ${pct}%, #1f3d5c ${pct}%, #0d2540 100%)`;
   });
 }
 
@@ -1986,6 +2088,9 @@ function render() {
   const cfg    = INSTRUMENTS[currentInstrument];
   const model  = cfg.model(inp);
   const colour = spectrumColour(inp.wavelength);
+
+  // Update all slider filled-track backgrounds
+  updateSliderFills();
 
   // Wavelength output
   $("wavelengthOut").textContent = `${inp.wavelength.toFixed(1)} nm`;

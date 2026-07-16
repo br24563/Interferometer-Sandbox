@@ -191,6 +191,8 @@ body {
   display: grid;
   grid-template-columns: 320px 1fr;
   gap: 20px;
+  /* stretch so both columns are equal height — prevents empty space on the
+     right when the controls panel is taller than the visual column. */
   align-items: start;
   margin-bottom: 20px;
 }
@@ -274,7 +276,9 @@ body {
 
 /* Sub-label hint text beneath each control */
 .sublabel {
-  margin: 4px 0 0;
+  /* No top margin — the parent .control gap:4px handles spacing above.
+     Bottom margin also zero so .control-group gap governs inter-control space. */
+  margin: 0;
   font-size: 0.74rem;
   color: var(--muted-dim);
   line-height: 1.45;
@@ -283,7 +287,9 @@ body {
 .control {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  /* Tight gap: label → input-row → sublabel.  Inter-control spacing comes
+     from the parent .control-group gap (12px). */
+  gap: 4px;
 }
 
 .control-label {
@@ -314,20 +320,30 @@ body {
   gap: 8px;
 }
 
-/* Slider track */
+/* ── Range slider ── */
 .input-row input[type="range"] {
   flex: 1;
   min-width: 0;
-  height: 5px;
+  /* Height must be set to auto (not a fixed px) so the thumb doesn't create
+     extra vertical space on WebKit.  The track height is controlled via the
+     pseudo-element below. */
+  height: auto;
   -webkit-appearance: none;
   appearance: none;
   border: none;
+  /* Base background — overridden per-slider by JS updateSliderFills() to
+     reflect the current thumb position. */
+  background: linear-gradient(90deg, var(--line) 0%, #2a5880 100%);
   border-radius: 3px;
-  background: linear-gradient(90deg, var(--line), #2a5880);
   outline: none;
   cursor: pointer;
+  /* Vertical centering: align-items:center on .input-row handles this,
+     but we also remove any implicit margin the UA may add. */
+  margin: 0;
+  padding: 0;
 }
 
+/* WebKit: thumb */
 .input-row input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 15px;
@@ -337,6 +353,8 @@ body {
   cursor: pointer;
   box-shadow: 0 0 8px rgba(61,214,245,0.45);
   transition: box-shadow 0.15s, transform 0.15s;
+  /* Prevent the thumb from adding extra height to the row */
+  margin-top: 0;
 }
 
 .input-row input[type="range"]::-webkit-slider-thumb:hover {
@@ -344,6 +362,24 @@ body {
   transform: scale(1.15);
 }
 
+/* WebKit: runnable track — height matches the input's background height */
+.input-row input[type="range"]::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 3px;
+  /* Transparent here — the actual fill gradient is set on the <input> element
+     itself by updateSliderFills() so the gradient boundary is pixel-precise. */
+  background: transparent;
+}
+
+/* Firefox: track */
+.input-row input[type="range"]::-moz-range-track {
+  height: 5px;
+  border-radius: 3px;
+  background: transparent;
+  border: none;
+}
+
+/* Firefox: thumb */
 .input-row input[type="range"]::-moz-range-thumb {
   width: 15px;
   height: 15px;
@@ -354,11 +390,12 @@ body {
   box-shadow: 0 0 8px rgba(61,214,245,0.45);
 }
 
-/* Filled track (Chrome/Edge) — shows how far the thumb has travelled */
-.input-row input[type="range"]::-webkit-slider-runnable-track {
+/* Firefox: filled portion */
+.input-row input[type="range"]::-moz-range-progress {
   height: 5px;
-  border-radius: 3px;
-  background: linear-gradient(90deg, var(--cyan-dim), #2a5880);
+  border-radius: 3px 0 0 3px;
+  background: var(--cyan);
+  opacity: 0.7;
 }
 
 /* Number + select inputs */
@@ -513,11 +550,16 @@ body {
 .fringe-card {
   display: flex;
   flex-direction: column;
+  /* Explicit min-height ensures the card always reserves space even before
+     the first render call populates the canvas. */
   min-height: 260px;
 }
 
 .diagram-card canvas,
 .fringe-card canvas {
+  /* flex:1 + height:0 pattern: the canvas grows to fill all remaining card
+     height without contributing its own intrinsic height to the calculation.
+     min-height provides the guaranteed floor. */
   flex: 1;
   width: 100%;
   height: 0;
