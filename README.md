@@ -101,7 +101,8 @@ Earth rotation rate ≈ 15°/hr = 4.17 × 10⁻³ °/s; FOG gyroscopes resolve <
 |---|---|---|
 | Vacuum wavelength λ | 380–750 nm | Visible spectrum; affects fringe scale and beam colour |
 | Coherence γ | 0–100% | 100% = ideal CW laser; 0% = fully incoherent |
-| Arm / cavity length | 0–1 mm | Displayed in selected unit; internal storage always nm |
+| Arm / cavity length | 0–1 mm | Michelson / Mach–Zehnder / Fabry–Pérot; displayed in selected unit, internal storage always nm |
+| Ring radius r | 0–10 cm | Sagnac only; switching to the Sagnac tab auto-selects mm display, since coil radii are cm-scale |
 | Refractive index n | 1.0–3.0 | Applied to sample arm (MZI) or cavity medium (FP) |
 | Mirror reflectivity R | 0–99% | Fabry–Pérot only; drives finesse ℱ |
 | Rotation rate Ω | ±1000 °/s | Sagnac only; positive = CCW |

@@ -49,6 +49,7 @@ const INSTRUMENTS = {
     armAHint: "Geometric path from beamsplitter to mirror A (one-way). In Michelson the light travels this path twice (round-trip).",
     armBHint: "Geometric path from beamsplitter to mirror B (one-way). Scanning mirror B by λ/2 completes one full fringe cycle.",
     armGroup: "Interferometer Arms",
+    armMaxNm: 1e6,   // 1 mm max slider range
     fringeMode: "Circular",
     showRefractive: true,
     refractiveNote: "Refractive index n of any medium inserted in an arm (default 1.0 = air). Optical path = n × geometric path.",
@@ -90,6 +91,7 @@ const INSTRUMENTS = {
     armAHint: "Single-pass length of the reference arm. Light travels this distance once from BS1 to BS2 via mirror M1.",
     armBHint: "Single-pass length of the sample arm. Insert a glass cell or flow channel here to add an optical path shift (n−1)×thickness.",
     armGroup: "Beam Paths",
+    armMaxNm: 1e6,   // 1 mm max slider range
     fringeMode: "Localized",
     showRefractive: true,
     refractiveNote: "Refractive index n of a sample inserted in Path B only. Setting n > 1 models inserting glass (n≈1.5) or another transparent medium.",
@@ -131,6 +133,7 @@ const INSTRUMENTS = {
     armAHint: "Distance between the two partially-reflective mirror surfaces. Resonance occurs when 2nL = mλ. Scanning L by λ/(2n) advances one fringe order.",
     armBHint: "",
     armGroup: "Etalon / Cavity",
+    armMaxNm: 1e6,   // 1 mm max slider range
     fringeMode: "Ring (Haidinger)",
     showRefractive: true,
     refractiveNote: "Refractive index n of the material filling the cavity gap (air = 1.000, glass etalon ≈ 1.5). Affects both the resonance condition and FSR.",
@@ -188,6 +191,7 @@ const INSTRUMENTS = {
     armAHint: "Physical radius of each fiber loop or mirror polygon. Area A = πr². A larger area amplifies the Sagnac shift per unit of rotation.",
     armBHint: "",
     armGroup: "Ring / Fibre Geometry",
+    armMaxNm: 1e8,   // 10 cm max slider range — real FOG coils span mm-to-cm radii
     fringeMode: "Phase vs Ω",
     showRefractive: false,
     refractiveNote: "",
@@ -197,7 +201,7 @@ const INSTRUMENTS = {
     quarterWaveText: "+λ/4 phase offset",
     model: (inp) => {
       const lambda = inp.wavelength; // nm
-      const c = 3e17;               // nm/s
+      const c = 2.99792458e17;      // nm/s (exact SI value: c = 299,792,458 m/s)
       // r in nm from arm slider; convert to nm then compute area in nm²
       const r_nm  = inp.armA;         // nm
       const N     = inp.fiberTurns;   // number of loops (integer-ish)
@@ -228,7 +232,7 @@ const INSTRUMENTS = {
       const r_nm  = inp.armA;
       const N     = inp.fiberTurns;
       const A_m2  = Math.PI * (r_nm * 1e-9) * (r_nm * 1e-9);
-      const c     = 3e8; // m/s for display
+      const c     = 299792458; // m/s (exact SI value)
       const omega = inp.rotationRate * (Math.PI / 180);
       const sf    = (4 * N * A_m2 * (Math.PI/180)) / (inp.wavelength * 1e-9 * c);
       return `
@@ -274,12 +278,14 @@ const DEFAULTS = {
   fiberTurns: 100,   // Sagnac: fibre coil winding count
 };
 
-// Per-instrument arm defaults (in nm) — applied on tab switch
+// Per-instrument arm defaults (in nm) — applied on tab switch.
+// `unit` is the display unit that best fits that instrument's natural scale
+// (sub-µm arm scans in nm; the centimetre-scale Sagnac coil radius in mm).
 const ARM_DEFAULTS = {
-  michelson:   { armA: 50000,    armB: 50000.5 },
-  machZehnder: { armA: 50000,    armB: 50000.5 },
-  fabryPerot:  { armA: 50000,    armB: 50000   },
-  sagnac:      { armA: 5e7,      armB: 5e7     }, // 5 cm radius
+  michelson:   { armA: 50000,    armB: 50000.5, unit: "nm" },
+  machZehnder: { armA: 50000,    armB: 50000.5, unit: "nm" },
+  fabryPerot:  { armA: 50000,    armB: 50000,   unit: "nm" },
+  sagnac:      { armA: 5e7,      armB: 5e7,     unit: "mm" }, // 5 cm radius
 };
 
 const unitScale = { nm: 1, um: 1000, mm: 1e6 };
@@ -320,15 +326,22 @@ const displayLength = (nm, digits = 3) => `${(nm / unitScale[lengthUnit.value]).
 
 // ==================== Units ====================
 
+// The slider/input max depends on the current instrument — a Sagnac coil
+// radius spans centimetres while Michelson/MZI/FP arms stay sub-millimetre.
+function currentArmMaxNm() {
+  return (INSTRUMENTS[currentInstrument] && INSTRUMENTS[currentInstrument].armMaxNm) || MAX_ARM_NM;
+}
+
 function setArmUnit(nextUnit) {
   const oldScale = unitScale[activeLengthUnit];
   const scale = unitScale[nextUnit];
+  const maxNm = currentArmMaxNm();
   [
     [controls.armA, controls.armAInput, "armAUnit"],
     [controls.armB, controls.armBInput, "armBUnit"],
   ].forEach(([slider, input, unitId]) => {
     const physicalNm = Number(slider.value) * oldScale;
-    const maxInUnit = MAX_ARM_NM / scale;
+    const maxInUnit = maxNm / scale;
     slider.max = maxInUnit; slider.step = 0.001;
     input.max = maxInUnit; input.step = 0.001;
     slider.value = physicalNm / scale;
@@ -358,10 +371,30 @@ document.querySelectorAll(".tab").forEach(tab => {
   });
 });
 
+// Switch the length-unit dropdown/state without re-triggering setArmUnit's
+// value-conversion logic (used when applyArmDefaults is about to overwrite
+// the arm values outright anyway).
+function setActiveUnitSilently(nextUnit) {
+  activeLengthUnit = nextUnit;
+  lengthUnit.value = nextUnit;
+  $("armAUnit").textContent = nextUnit === "um" ? "µm" : nextUnit;
+  $("armBUnit").textContent = nextUnit === "um" ? "µm" : nextUnit;
+}
+
+// Reset arm/cavity values AND the slider range + display unit to the
+// instrument's natural scale. Every instrument reuses the same armA/armB
+// sliders, but a Sagnac coil radius (cm) and a Michelson arm (µm) need very
+// different ranges — switching tabs must resync both, or a value can end up
+// silently clamped by a stale slider max (below the number actually shown).
 function applyArmDefaults(instr) {
   const d = ARM_DEFAULTS[instr];
   if (!d) return;
+  if (d.unit && d.unit !== activeLengthUnit) setActiveUnitSilently(d.unit);
   const scale = unitScale[activeLengthUnit];
+  const maxInUnit = (INSTRUMENTS[instr].armMaxNm || MAX_ARM_NM) / scale;
+  [controls.armA, controls.armAInput, controls.armB, controls.armBInput].forEach(el => {
+    el.max = maxInUnit;
+  });
   controls.armA.value      = d.armA / scale;
   controls.armAInput.value = (d.armA / scale).toFixed(3);
   controls.armB.value      = d.armB / scale;
@@ -640,11 +673,17 @@ function drawMirror(ctx, x, y, horiz = false, label = "M") {
  * @param {CanvasRenderingContext2D} ctx
  * @param {number} x  Centre x of the mirror
  * @param {number} y  Centre y of the mirror
+ * Each orientation names a 45° line through (x, y); by the law of reflection
+ * a single line always swaps exactly two perpendicular direction-pairs (a ray
+ * along either member of a pair reflects into the other member). NE/SW share
+ * the "/" line (bottom-left ↔ top-right); NW/SE share the "\" line
+ * (bottom-right ↔ top-left / top-left ↔ bottom-right). The two names on the
+ * same line differ only in which side gets the drawn backing/shadow.
  * @param {string} orientation
- *   "NE" — reflects a rightward beam upward   (bottom-left → top-right diagonal)
- *   "NW" — reflects a leftward beam upward    (bottom-right → top-left diagonal)  [unused currently]
- *   "SE" — reflects a downward beam rightward (top-left → bottom-right diagonal)
- *   "SW" — reflects a rightward beam downward (top-right → bottom-left diagonal)  [unused currently]
+ *   "NE" — "/" diagonal; swaps rightward ↔ upward.   Backing faces upper-left.
+ *   "NW" — "\" diagonal; swaps leftward ↔ upward.     Backing faces upper-right.
+ *   "SE" — "\" diagonal; swaps rightward ↔ downward.  Backing faces lower-left.
+ *   "SW" — "/" diagonal; swaps leftward ↔ downward.   Backing faces lower-right.
  * @param {string} label
  * @param {string} labelPos  "above" | "below" | "left" | "right"
  */
@@ -892,7 +931,9 @@ function drawMichelson(inp, model, colour) {
   // arm B but twice (go + return) through arm A.  The CP equalises this glass
   // thickness so both arms see the same dispersion — critical for white-light
   // fringes and high-coherence metrology.
-  const cpMidX  = bsX + armH * 0.38;
+  // Kept close to the BS (physically accurate — it sits right next to the
+  // splitter) and clear of the "L_B = …" length label centred on the arm.
+  const cpMidX  = bsX + armH * 0.16;
   const cpHalfH = 10;
   ctx.save();
   ctx.strokeStyle = "#3a7fa8"; ctx.lineWidth = 4; ctx.globalAlpha = 0.55;
@@ -935,18 +976,23 @@ function drawMachZehnder(inp, model, colour) {
   drawBeamSplitter(ctx, x1, yA, bs, "BS1");
 
   // ── Arm A (lower path): BS1 → M1(bottom-right) → BS2 ──
-  // Beam arrives from the left (+x) and must exit upward (−y).
-  // The reflecting surface bisects the 90° turn, so it lies along the ╲ diagonal.
-  // In canvas coords (y increases downward) this is orientation "SE".
+  // Beam arrives from the left (rightward) and must exit upward. Reflecting
+  // rightward↔upward requires the "/" diagonal (NE/SW line, verified by the
+  // reflection formula d' = d − 2(d·n̂)n̂ — a "\" mirror sends rightward to
+  // downward, not upward). M1's beams sit toward its upper-left (the
+  // rectangle's interior), so "SW" gives the correct line with the backing
+  // shadow drawn on the exterior (lower-right) side.
   drawBeam(ctx, x1 + bs, yA, x2, yA,     colour, 1.8, true);   // rightward to M1
-  drawFoldMirror(ctx, x2, yA, "SE", "M1", "right");
+  drawFoldMirror(ctx, x2, yA, "SW", "M1", "right");
   drawBeam(ctx, x2, yA - 1, x2, yB + bs, colour, 1.8, true);   // upward to BS2
 
   // ── Arm B (upper path): BS1 → M2(top-left) → BS2 ──
-  // Beam arrives from below (−y, i.e. upward travel) and must exit rightward (+x).
-  // Same ╲ surface geometry → "SE" orientation.
+  // Beam arrives from below (upward travel) and must exit rightward — the
+  // same "/" diagonal as M1 (upward↔rightward is the same reflection pair).
+  // M2's beams sit toward its lower-right (the interior), so "NE" gives the
+  // correct line with backing on the exterior (upper-left) side.
   drawBeam(ctx, x1, yA - bs, x1, yB,     colour, 1.8, true);   // upward to M2
-  drawFoldMirror(ctx, x1, yB, "SE", "M2", "left");
+  drawFoldMirror(ctx, x1, yB, "NE", "M2", "left");
   drawBeam(ctx, x1 + 1, yB, x2 - bs, yB, colour, 1.8, true);   // rightward to BS2
 
   // ── BS2 → output → detector ──
@@ -1139,25 +1185,33 @@ function drawSagnac(inp, model, colour) {
 
   // ── Three 45° fold mirrors at ring corners ──
   //
-  // Mirror orientation rule: the reflective surface bisects the angle between
-  // incoming and outgoing rays.  For 90° bends, the surface is always 45°.
-  // The orientation code selects which diagonal (╱ or ╲) and which side gets
-  // the dark backing.
+  // A mirror line at 45° swaps exactly one perpendicular pair of directions
+  // (verified via d' = d − 2(d·n̂)n̂): the "/" line (NE/SW) swaps
+  // rightward↔upward and downward↔leftward; the "\" line (NW/SE) swaps
+  // rightward↔downward and leftward↔upward. The named orientation also picks
+  // which side gets the drawn backing — it should face the ring's exterior,
+  // away from both beam segments.
   //
   // Ring geometry (CCW beam path):  BS(bottom-left) → up → M1(top-left)
   //   → right → M2(top-right) → down → M3(bottom-right) → left → BS
   //
-  // M1 top-left:    CCW beam arrives from below (↑) and exits rightward (→)
-  //   Surface bisects ↑ and →  =  ╲ diagonal  →  "SE"
-  drawFoldMirror(ctx, M1.x, M1.y, "SE", "M1", "left");
+  // M1 top-left: CCW beam arrives from below (upward) and exits rightward —
+  //   an upward↔rightward pair needs the "/" line. Beams sit toward the
+  //   interior (lower-right of M1), so "NE" backs the shadow to the exterior
+  //   (upper-left).
+  drawFoldMirror(ctx, M1.x, M1.y, "NE", "M1", "left");
   //
-  // M2 top-right:   CCW beam arrives from left (→) and exits downward (↓)
-  //   Surface bisects → and ↓  =  ╱ diagonal  →  "NE"
-  drawFoldMirror(ctx, M2.x, M2.y, "NE", "M2", "right");
+  // M2 top-right: CCW beam arrives from the left (rightward) and exits
+  //   downward — a rightward↔downward pair needs the "\" line. Beams sit
+  //   toward the interior (lower-left of M2), so "NW" backs the shadow to
+  //   the exterior (upper-right).
+  drawFoldMirror(ctx, M2.x, M2.y, "NW", "M2", "right");
   //
-  // M3 bottom-right: CCW beam arrives from above (↓) and exits leftward (←)
-  //   Surface bisects ↓ and ←  =  ╱ diagonal  →  "NE"
-  drawFoldMirror(ctx, M3.x, M3.y, "NE", "M3", "right");
+  // M3 bottom-right: CCW beam arrives from above (downward) and exits
+  //   leftward — a downward↔leftward pair needs the "/" line. Beams sit
+  //   toward the interior (upper-left of M3), so "SW" backs the shadow to
+  //   the exterior (lower-right).
+  drawFoldMirror(ctx, M3.x, M3.y, "SW", "M3", "right");
 
   // Helper: draw one complete directed beam path around the ring
   // segs = array of {x1,y1,x2,y2} segments
@@ -1237,13 +1291,19 @@ function drawSagnac(inp, model, colour) {
     ctx.restore();
   }
 
-  // ── Ring radius label (dashed half-diagonal) ──
+  // ── Ring radius label (dashed centre-to-edge line) ──
+  // The physics models the coil as a circular loop, A = πr² — so the leader
+  // line points straight up to the midpoint of the top edge (like a clock
+  // hand to 12 o'clock), not to a corner. A corner is a diagonal of the
+  // square path (√2× longer than an edge distance) and isn't the radius the
+  // model actually uses.
+  const radiusTopX = ringCx, radiusTopY = tm;
   ctx.save();
   ctx.strokeStyle = CLR_MUTED_DIM; ctx.lineWidth = 0.8; ctx.setLineDash([3, 4]);
-  ctx.beginPath(); ctx.moveTo(ringCx, ringCy); ctx.lineTo(M2.x, M2.y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(ringCx, ringCy); ctx.lineTo(radiusTopX, radiusTopY); ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = CLR_BEAM_DIM; ctx.font = FONT_MONO_SM; ctx.textAlign = "center";
-  ctx.fillText(`r = ${fmtLen(inp.armA)}`, (ringCx + M2.x) / 2 - 8, (ringCy + M2.y) / 2 + 14);
+  ctx.fillStyle = CLR_BEAM_DIM; ctx.font = FONT_MONO_SM; ctx.textAlign = "left";
+  ctx.fillText(`r = ${fmtLen(inp.armA)}`, radiusTopX + 6, (ringCy + radiusTopY) / 2);
   ctx.restore();
 
   drawOPDAnnotation(ctx, model, inp);
@@ -2161,7 +2221,8 @@ function render() {
   }
 
   if (currentInstrument !== "sagnac") {
-    $("fringeOrder").textContent = `m = ${model.fringeOrder.toFixed(3)}  (fractional: ${((model.fringeOrder % 1) + 1) % 1 .toFixed(4)})`;
+    const fringeFrac = ((model.fringeOrder % 1) + 1) % 1;
+    $("fringeOrder").textContent = `m = ${model.fringeOrder.toFixed(3)}  (fractional: ${fringeFrac.toFixed(4)})`;
   }
   $("visibility").textContent = `V = ${(model.visibility * 100).toFixed(2)}%`;
 
@@ -2240,7 +2301,9 @@ function shiftArmB(multiplier) {
   const max     = Number(controls.armB.max);
   if (next >= 0 && next <= max) {
     controls.armB.value      = next;
-    controls.armBInput.value = next.toFixed(6);
+    // 3 decimals matches the rest of the app's display convention (displayLength);
+    // the slider itself (read by the physics model) keeps full float precision.
+    controls.armBInput.value = next.toFixed(3);
     scheduleRender();
   }
 }
@@ -2275,5 +2338,8 @@ const _resizeObserver = new ResizeObserver(() => scheduleRender());
 
 // ==================== Startup ====================
 
+// Sync the arm-slider range/unit to the starting instrument (Michelson) —
+// the HTML's hardcoded max is only a fallback for the pre-JS paint.
+applyArmDefaults(currentInstrument);
 updateInstrumentUI();
 render();

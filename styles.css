@@ -189,7 +189,7 @@ body {
 
 .lab-grid {
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: 348px 1fr;
   gap: 20px;
   /* stretch so both columns are equal height — prevents empty space on the
      right when the controls panel is taller than the visual column. */
@@ -401,14 +401,17 @@ body {
 
 /* Number + select inputs */
 .numeric-input {
-  width: 80px;
-  padding: 5px 7px;
+  /* Wide enough for the longest value the app ever writes into it —
+     "1000000.000" (11 chars) — so the number is never visually clipped. */
+  width: 128px;
+  flex-shrink: 0;
+  padding: 5px 6px;
   background: var(--panel-deep);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   color: var(--ink);
   font-family: "Courier New", Courier, monospace;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   text-align: right;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
@@ -902,7 +905,7 @@ body {
 
 @media (max-width: 1200px) {
   .lab-grid {
-    grid-template-columns: 300px 1fr;
+    grid-template-columns: 320px 1fr;
   }
   .tips-grid {
     grid-template-columns: repeat(2, 1fr);
