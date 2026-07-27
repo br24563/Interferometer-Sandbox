@@ -50,6 +50,11 @@ T = 1 / [ 1 + F · sin²(φ/2) ]
 Peak transmission at `φ = 2mπ`; FWHM per peak = FSR / ℱ.
 Resolving power = `m · ℱ`.
 
+Unlike the two-beam cosine, the Airy lineshape is *not* symmetric about 0.5 — at
+high finesse it sits near `T = 1` for most of the cycle and only dips briefly —
+so its fringe visibility is not simply `γ`. At full coherence,
+`V = F / (F + 2)`; with partial coherence γ, `V = γF / (1 + F + γ)`.
+
 ### Sagnac — non-reciprocal ring interferometer
 
 ```
@@ -131,7 +136,8 @@ Earth rotation rate ≈ 15°/hr = 4.17 × 10⁻³ °/s; FOG gyroscopes resolve <
 - All calculations use IEEE 754 double-precision floating-point.
 - The spectrum-to-RGB conversion uses the Bruton (1996) piecewise model with correct sRGB gamma encoding (γ = 1/2.2) applied once to linear-light values, plus an eye-sensitivity rolloff at the spectral limits (< 420 nm, > 700 nm).
 - The coherence length is modelled as ℓ_c = λ / (π(1 − γ)) — consistent with a Lorentzian lineshape where Δλ ≈ λ²/(π·ℓ_c).
-- The Fabry–Pérot intensity blends the ideal Airy peak `T·γ` with an incoherent background `½(1 − γ)` — the correct treatment for partial temporal coherence.
+- The Fabry–Pérot intensity blends the ideal Airy peak `T·γ` with an incoherent background `½(1 − γ)` — a first-order model for partial coherence that is exact at both limits (γ=1: pure Airy; γ=0: flat, no fringes).
+- Off-axis equal-inclination (Michelson/MZI) and Haidinger (Fabry–Pérot) fringe rendering accounts for refraction at the arm/cavity boundary via Snell's law (sin θ_ext = n·sin θ_int) whenever the medium index n ≠ 1, so ring spacing scales correctly with n instead of assuming n = 1 for the angular term.
 
 ### Performance
 - `requestAnimationFrame` throttling: every slider, number-input, and button event calls `scheduleRender()` which posts at most one `rAF` callback per frame, eliminating redundant repaints during fast drags.

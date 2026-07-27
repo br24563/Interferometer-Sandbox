@@ -64,7 +64,10 @@ const INSTRUMENTS = {
       const phase = TAU * (opd / lambda) + offset;
       const gamma = inp.coherence / 100;
       const intensity = 0.5 * (1 + gamma * Math.cos(phase));
-      return { lambda, opd, phase, gamma, intensity, fringeOrder: opd / lambda, visibility: gamma };
+      return {
+        lambda, opd, phase, gamma, intensity, fringeOrder: opd / lambda, visibility: gamma,
+        iMin: 0.5 * (1 - gamma), iMax: 0.5 * (1 + gamma),
+      };
     },
     modelHTML: (inp) => `
       <p>Equal-intensity beams with coherence γ:</p>
@@ -106,7 +109,10 @@ const INSTRUMENTS = {
       const phase = TAU * (opd / lambda) + offset;
       const gamma = inp.coherence / 100;
       const intensity = 0.5 * (1 + gamma * Math.cos(phase));
-      return { lambda, opd, phase, gamma, intensity, fringeOrder: opd / lambda, visibility: gamma };
+      return {
+        lambda, opd, phase, gamma, intensity, fringeOrder: opd / lambda, visibility: gamma,
+        iMin: 0.5 * (1 - gamma), iMax: 0.5 * (1 + gamma),
+      };
     },
     modelHTML: (inp) => `
       <p>Single-pass transmission interferometer:</p>
@@ -155,10 +161,22 @@ const INSTRUMENTS = {
       // FSR in nm (wavelength units): FSR_λ = λ² / (2nL) when expressed in wavelength
       const fsr = lambda * lambda / (opd === 0 ? 1e-9 : opd);
       const gamma = inp.coherence / 100;
-      const visibility = (2 * Math.sqrt(R)) / (1 + R);
+      // Airy fringe bounds: peak T=1 at resonance, floor T=1/(1+F) at anti-resonance.
+      // Blended with the same γ/incoherent-background model as `intensity` below.
+      // NOTE: unlike the two-beam cosine (symmetric about 0.5), the Airy lineshape
+      // is NOT symmetric about 0.5 — at high finesse T sits near 1 for most of the
+      // cycle and only dips briefly, so iMax+iMin ≠ 1. Each instrument therefore
+      // reports its own iMin/iMax rather than assuming the two-beam symmetry.
+      const airyMax = 1, airyMin = 1 / (1 + F);
+      const iMax = airyMax * gamma + 0.5 * (1 - gamma);
+      const iMin = airyMin * gamma + 0.5 * (1 - gamma);
+      // Contrast (iMax−iMin)/(iMax+iMin) — reduces to the standard Airy visibility
+      // F/(F+2) at γ=1, and correctly vanishes as γ→0 (unlike a static R-only formula).
+      const visibility = (iMax - iMin) / (iMax + iMin);
       return {
         lambda, opd, phase, gamma, intensity: intensity * gamma + 0.5 * (1 - gamma),
-        rawIntensity: intensity, fringeOrder: opd / lambda, visibility, finesse, fsr, F, R
+        rawIntensity: intensity, fringeOrder: opd / lambda, visibility, finesse, fsr, F, R,
+        iMin, iMax,
       };
     },
     modelHTML: (inp) => {
@@ -221,7 +239,7 @@ const INSTRUMENTS = {
       const A_m2 = A_nm2 * 1e-18;
       return {
         lambda, opd, phase, gamma, intensity, fringeOrder: opd / lambda,
-        visibility: gamma,
+        visibility: gamma, iMin: 0.5 * (1 - gamma), iMax: 0.5 * (1 + gamma),
         sagnacPhase:   phase - offset,
         omega_rad_s,   A_nm2, A_m2, N,
         dPhidOmega:    dPhidOmega_per_degs,
@@ -927,10 +945,16 @@ function drawMichelson(inp, model, colour) {
   ctx.restore();
 
   // ── Compensator plate (CP) in arm B ──
-  // In a Michelson, the source beam traverses the BS glass once on the way to
-  // arm B but twice (go + return) through arm A.  The CP equalises this glass
-  // thickness so both arms see the same dispersion — critical for white-light
-  // fringes and high-coherence metrology.
+  // For a beamsplitter plate coated on its front (source-facing) surface:
+  // the arm that REFLECTS off that coating (Arm A) passes through the glass
+  // substrate only once total — on its return leg, transmitting through to
+  // reach the detector. The arm that TRANSMITS through on the first pass
+  // (Arm B) crosses the substrate twice going out and back, then a third
+  // time after reflecting off the coating to head to the detector — three
+  // passes total. The CP — an uncoated plate of identical glass and tilt,
+  // placed in Arm A — adds the missing two substrate passes so both arms
+  // see equal glass path and dispersion, which matters for white-light
+  // fringes and broadband sources.
   // Kept close to the BS (physically accurate — it sits right next to the
   // splitter) and clear of the "L_B = …" length label centred on the arm.
   const cpMidX  = bsX + armH * 0.16;
@@ -1605,9 +1629,13 @@ function drawCircularFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
         const r_px = Math.sqrt(lx * lx + ly * ly);
         if (r_px > maxR_px) continue;
 
-        const theta = r_px / f_px;
-        // Exact equal-inclination OPD: OPD(θ) = OPD0·cos(θ)
-        const opd_theta = OPD0 * Math.cos(theta);
+        const theta = r_px / f_px; // external (lab-frame) viewing angle
+        // Equal-inclination OPD is set by the INTERNAL propagation angle
+        // inside the arm's medium, θ_int, related to the external angle by
+        // Snell's law: sinθ_ext = n·sinθ_int. For n=1 (air) θ_int=θ_ext and
+        // this reduces to the familiar OPD(θ) = OPD0·cosθ.
+        const thetaInt = Math.asin(Math.min(1, Math.sin(theta) / inp.n));
+        const opd_theta = OPD0 * Math.cos(thetaInt);
         const signed_opd = Math.sign(model.opd) * opd_theta;
         const phase = TAU * (signed_opd / lambda) + phaseOffset;
         const I = 0.5 * (1 + gamma * Math.cos(phase));
@@ -1756,9 +1784,12 @@ function drawHaidingerFringes(ctx, W, H, PW, PH, dpr, model, colour, gamma,
       const r_px = Math.sqrt(lx * lx + ly * ly);
       if (r_px > maxR_px) continue;
 
-      const theta = r_px / f_px;
-      const cosTheta = Math.cos(theta);
-      // Exact Airy phase: φ = 2π·OPD0·cosθ/λ
+      const theta = r_px / f_px; // external (lab-frame) viewing angle
+      // Internal cavity angle via Snell's law (sinθ_ext = n·sinθ_int) — the
+      // round-trip phase depends on the ray's angle INSIDE the cavity medium.
+      const thetaInt = Math.asin(Math.min(1, Math.sin(theta) / inp.n));
+      const cosTheta = Math.cos(thetaInt);
+      // Airy phase: φ = 2π·OPD0·cosθ_int/λ
       const phase = TAU * (OPD0 * cosTheta / lambda) + phaseOffset;
       const T = 1 / (1 + F * Math.sin(phase / 2) ** 2);
       const I = T * gamma + 0.5 * (1 - gamma);
@@ -2191,20 +2222,33 @@ function render() {
   // Header badge
   $("sourcePresetBadge").textContent = SOURCE_PRESETS[sourcePreset.value]?.label || `${inp.wavelength.toFixed(1)} nm`;
 
-  // Intensity — use model.visibility for FP (Airy), model.gamma for two-beam
+  // Intensity — each model reports its own iMin/iMax directly (the Airy
+  // lineshape isn't symmetric about 0.5 like the two-beam cosine is, so these
+  // can't be derived from a single visibility scalar for Fabry–Pérot).
   const vis = model.visibility;
   $("intensity").textContent = model.intensity.toFixed(4);
-  $("intensityMin").textContent = (0.5 * (1 - vis)).toFixed(4);
-  $("intensityMax").textContent = (0.5 * (1 + vis)).toFixed(4);
+  $("intensityMin").textContent = model.iMin.toFixed(4);
+  $("intensityMax").textContent = model.iMax.toFixed(4);
   $("contrast").textContent = `${(vis * 100).toFixed(1)}%`;
 
-  // Interference state
+  // Interference state — classified by where the CURRENT intensity sits
+  // within this instrument's own [iMin, iMax] range, not a fixed phase
+  // window. A fixed ±0.25 rad window is fine for the two-beam cosine, but
+  // for a high-finesse Fabry–Pérot cavity (F ~ hundreds) the Airy peak is
+  // far narrower than 0.25 rad — e.g. at R=90% (F≈360), a mere 0.2 rad
+  // detuning already drops transmission to ~22%, nowhere near "bright".
   const phi = ((model.phase % TAU) + TAU) % TAU;
+  const range = model.iMax - model.iMin;
+  const level = range > 1e-9 ? (model.intensity - model.iMin) / range : 1; // 0..1
   let state;
-  if (phi < 0.25 || phi > TAU - 0.25)         state = "◉ Constructive — bright fringe";
-  else if (Math.abs(phi - Math.PI) < 0.25)     state = "◎ Destructive — dark fringe";
-  else if (phi < Math.PI)                      state = "◑ Partial — rising";
-  else                                         state = "◐ Partial — falling";
+  // d(intensity)/dφ = -0.5·γ·sin(φ): for φ∈(0,π), sinφ>0 so intensity is
+  // FALLING (moving away from the bright fringe at φ=0 toward the dark
+  // fringe at φ=π); for φ∈(π,2π), sinφ<0 so intensity is RISING (heading
+  // back up from the dark fringe toward the next bright fringe at 2π).
+  if (level > 0.9)                        state = "◉ Constructive — bright fringe";
+  else if (level < 0.1)                   state = "◎ Destructive — dark fringe";
+  else if (phi < Math.PI)                 state = "◐ Partial — falling";
+  else                                    state = "◑ Partial — rising";
   $("interferenceState").textContent = state;
 
   // Derived quantities
